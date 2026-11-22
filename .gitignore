@@ -1,0 +1,23 @@
+# dependencies & build output
+node_modules/
+dist/
+target/
+src-tauri/gen/
+*.tsbuildinfo
+
+# secrets — NEVER commit
+.env
+.env.*
+!.env.example
+
+# personal config & files that may carry credentials
+/config.json
+*.rdp
+/rdp/
+
+# misc
+.DS_Store
+Thumbs.db
+*.log
+.vscode/*
+!.vscode/extensions.json

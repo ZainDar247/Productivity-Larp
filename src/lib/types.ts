@@ -1,0 +1,163 @@
+import { z } from "zod";
+
+export type DisplayMode = "text" | "icon" | "image" | "icon+text" | "image+text";
+export const DISPLAY_MODES: DisplayMode[] = ["text", "icon", "image", "icon+text", "image+text"];
+
+export type ActionT =
+  | { type: "open"; path: string }
+  | { type: "rdp"; file: string; args?: string[] }
+  | { type: "run"; command: string; args?: string[]; cwd?: string; hidden?: boolean }
+  | { type: "url"; url: string }
+  | { type: "settings" };
+export type ActionType = ActionT["type"];
+export const ACTION_TYPES: { type: ActionType; label: string; hint: string }[] = [
+  { type: "rdp", label: "Remote desktop (.rdp)", hint: "Opens an .rdp file with mstsc.exe" },
+  { type: "open", label: "Open file / folder / app", hint: "Opens with the default handler" },
+  { type: "run", label: "Run program", hint: "Starts any executable with arguments" },
+  { type: "url", label: "Open URL", hint: "Opens in the default browser" },
+  { type: "settings", label: "Open settings", hint: "Opens this settings window" },
+];
+
+export interface NodeT {
+  id: string;
+  label?: string;
+  icon?: string;
+  image?: string;
+  display?: DisplayMode;
+  color?: string;
+  children?: NodeT[];
+  action?: ActionT;
+}
+
+export interface Theme {
+  mode: "dark" | "light";
+  accent: string;
+  sliceColor: string;
+  textColor: string;
+  dim: number;
+  innerRadius: number;
+  thickness: number;
+  gap: number;
+  fontSize: number;
+  animation: boolean;
+}
+
+export interface Behavior {
+  dwellMs: number;
+  warpCursor: boolean;
+}
+
+export type MouseButton = "left" | "right" | "middle" | "back" | "forward";
+export type TriggerMode = "press" | "hold";
+export type Trigger =
+  | { type: "keyboard"; shortcut: string; mode?: TriggerMode; holdMs?: number }
+  | { type: "mouse"; button: MouseButton; mode?: TriggerMode; holdMs?: number };
+
+export interface Config {
+  version: number;
+  trigger: Trigger;
+  theme?: Partial<Theme>;
+  behavior?: Partial<Behavior>;
+  menu: NodeT[];
+}
+
+export const DEFAULT_THEME: Theme = {
+  mode: "dark",
+  accent: "#7c5cff",
+  sliceColor: "#1d2030",
+  textColor: "#f2f3f8",
+  dim: 0.35,
+  innerRadius: 64,
+  thickness: 150,
+  gap: 6,
+  fontSize: 13,
+  animation: true,
+};
+export const DEFAULT_BEHAVIOR: Behavior = { dwellMs: 150, warpCursor: true };
+
+export const resolveTheme = (c: Config): Theme => ({ ...DEFAULT_THEME, ...c.theme });
+export const resolveBehavior = (c: Config): Behavior => ({ ...DEFAULT_BEHAVIOR, ...c.behavior });
+
+// ---- validation (loose: unknown keys survive a load/save round-trip) ----
+const ActionSchema = z.discriminatedUnion("type", [
+  z.looseObject({ type: z.literal("open"), path: z.string() }),
+  z.looseObject({ type: z.literal("rdp"), file: z.string(), args: z.array(z.string()).optional() }),
+  z.looseObject({
+    type: z.literal("run"),
+    command: z.string(),
+    args: z.array(z.string()).optional(),
+    cwd: z.string().optional(),
+    hidden: z.boolean().optional(),
+  }),
+  z.looseObject({ type: z.literal("url"), url: z.string() }),
+  z.looseObject({ type: z.literal("settings") }),
+]);
+
+const NodeSchema: z.ZodType<NodeT> = z.lazy(() =>
+  z.looseObject({
+    id: z.string().min(1),
+    label: z.string().optional(),
+    icon: z.string().optional(),
+    image: z.string().optional(),
+    display: z.enum(["text", "icon", "image", "icon+text", "image+text"]).optional(),
+    color: z.string().optional(),
+    children: z.array(NodeSchema).optional(),
+    action: ActionSchema.optional(),
+  }),
+);
+
+const TriggerSchema = z.discriminatedUnion("type", [
+  z.looseObject({
+    type: z.literal("keyboard"),
+    shortcut: z.string().min(1),
+    mode: z.enum(["press", "hold"]).optional(),
+    holdMs: z.number().min(0).optional(),
+  }),
+  z.looseObject({
+    type: z.literal("mouse"),
+    button: z.enum(["left", "right", "middle", "back", "forward"]),
+    mode: z.enum(["press", "hold"]).optional(),
+    holdMs: z.number().min(0).optional(),
+  }),
+]);
+
+export const ConfigSchema: z.ZodType<Config> = z.looseObject({
+  version: z.number().default(1),
+  trigger: TriggerSchema,
+  theme: z.looseObject({}).optional(),
+  behavior: z.looseObject({}).optional(),
+  menu: z.array(NodeSchema),
+}) as unknown as z.ZodType<Config>;
+
+export type ParseResult = { ok: true; config: Config } | { ok: false; error: string };
+
+export function parseConfig(raw: string): ParseResult {
+  let json: unknown;
+  try {
+    json = JSON.parse(raw);
+  } catch (e) {
+    return { ok: false, error: `Not valid JSON: ${(e as Error).message}` };
+  }
+  const r = ConfigSchema.safeParse(json);
+  if (!r.success) {
+    const i = r.error.issues[0];
+    return { ok: false, error: `${i.path.join(".") || "config"}: ${i.message}` };
+  }
+  const dup = findDuplicateId(r.data.menu);
+  if (dup) return { ok: false, error: `Duplicate menu id "${dup}"` };
+  return { ok: true, config: r.data };
+}
+
+export function findDuplicateId(menu: NodeT[]): string | null {
+  const seen = new Set<string>();
+  const walk = (ns: NodeT[]): string | null => {
+    for (const n of ns) {
+      if (seen.has(n.id)) return n.id;
+      seen.add(n.id);
+      const d = n.children ? walk(n.children) : null;
+      if (d) return d;
+    }
+    return null;
+  };
+  return walk(menu);
+}

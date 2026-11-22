@@ -1,0 +1,12 @@
+[package]
+name = "larp-core"
+version = "0.1.0"
+edition = "2021"
+description = "Config model, env expansion and action runner for productivity.larp (no GUI deps)"
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+open = "5"
+base64 = "0.22"

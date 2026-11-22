@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "trigger": { "type": "keyboard", "shortcut": "Ctrl+Shift+Z", "mode": "press", "holdMs": 350 },
+  "behavior": { "dwellMs": 150, "warpCursor": true },
+  "theme": {
+    "mode": "dark",
+    "accent": "#7c5cff",
+    "sliceColor": "#1d2030",
+    "textColor": "#f2f3f8",
+    "dim": 0.35,
+    "innerRadius": 64,
+    "thickness": 150,
+    "gap": 6,
+    "fontSize": 13,
+    "animation": true
+  },
+  "menu": [
+    {
+      "id": "rdp", "label": "RDP", "icon": "Monitor", "display": "icon+text",
+      "children": [
+        {
+          "id": "rdp-admin", "label": "Admin", "icon": "ShieldCheck", "display": "icon+text",
+          "children": [
+            { "id": "rdp-admin-1", "label": "Server 1", "icon": "Server", "display": "icon+text",
+              "action": { "type": "rdp", "file": "${RDP_DIR}\\admin\\server1.rdp" } },
+            { "id": "rdp-admin-2", "label": "Server 2", "icon": "Server", "display": "icon+text",
+              "action": { "type": "rdp", "file": "${RDP_DIR}\\admin\\server2.rdp" } }
+          ]
+        },
+        {
+          "id": "rdp-other", "label": "Others", "icon": "Users", "display": "icon+text",
+          "children": [
+            { "id": "rdp-other-1", "label": "Dev box", "icon": "Laptop", "display": "icon+text",
+              "action": { "type": "rdp", "file": "${RDP_DIR}\\other\\dev.rdp" } }
+          ]
+        }
+      ]
+    },
+    {
+      "id": "apps", "label": "Apps", "icon": "AppWindow", "display": "icon+text",
+      "children": [
+        { "id": "app-notepad", "label": "Notepad", "icon": "FileText", "display": "icon+text",
+          "action": { "type": "run", "command": "notepad.exe" } },
+        { "id": "app-calc", "label": "Calculator", "icon": "Calculator", "display": "icon+text",
+          "action": { "type": "run", "command": "calc.exe" } },
+        { "id": "app-terminal", "label": "Terminal", "icon": "Terminal", "display": "icon+text",
+          "action": { "type": "run", "command": "wt.exe" } }
+      ]
+    },
+    {
+      "id": "web", "label": "GitHub", "icon": "Globe", "display": "icon+text",
+      "action": { "type": "url", "url": "https://github.com" }
+    },
+    {
+      "id": "downloads", "label": "Downloads", "icon": "Download", "display": "icon+text",
+      "action": { "type": "open", "path": "${USERPROFILE}\\Downloads" }
+    },
+    {
+      "id": "settings", "label": "Settings", "icon": "Settings", "display": "icon+text",
+      "action": { "type": "settings" }
+    }
+  ]
+}
