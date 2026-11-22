@@ -63,6 +63,8 @@ const emit = (name: string, detail?: unknown) => bus.dispatchEvent(new CustomEve
 
 export const mockLog: string[] = [];
 (globalThis as { __larpLog?: string[] }).__larpLog = mockLog;
+// browser-mock only: lets tests push events (e.g. "config:changed") into the UI
+(globalThis as { __larpEmit?: typeof emit }).__larpEmit = emit;
 
 const mock: Bridge = {
   native: false,

@@ -209,7 +209,9 @@ export function Overlay() {
   let sub = hl ? undefined : crumbs.length ? crumbs.join(" › ") : "Esc to close";
   if (hl?.kind === "node" && !isFolder(hl.node) && !hl.node.action) sub = "no action set";
   if (error) (title = "⚠ " + error.slice(0, 40)), (sub = undefined);
-  if (!hl && pages > 1) sub = `${sub ?? ""} · page ${page + 1}/${pages}`.replace(/^ · /, "");
+  if (!hl && pages > 1) sub = `page ${page + 1}/${pages}`;
+  // the centre circle is small: keep only the tail of a long breadcrumb
+  if (sub && sub.length > 18) sub = "…" + sub.slice(-17);
 
   return (
     <div className="overlay" style={{ background: `rgba(0,0,0,${theme.dim})` }}>
