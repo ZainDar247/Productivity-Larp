@@ -1,27 +1,27 @@
-using System.Drawing.Imaging;
 using Larp.Web;
 using Microsoft.Web.WebView2.WinForms;
 
 namespace Larp.App;
 
 /// <summary>
-/// The full-screen menu window. Instead of fighting WebView2 for per-pixel transparency, it freezes
-/// a screenshot of the monitor under the cursor and shows that as the backdrop — so the menu looks
-/// transparent on every Windows version, and clicks can never leak through to the apps beneath.
+/// The full-screen menu window. It is genuinely see-through (DWM glass + a transparent WebView2), so the live desktop
+/// stays visible and un-dimmed around the ring. The window still takes focus and owns the pointer while it is up, so
+/// clicks never leak through to the apps beneath and keyboard navigation works.
 /// </summary>
 internal sealed class OverlayController
 {
+    private const int Offscreen = -32000;
+
     private readonly EventBus _bus;
-    private readonly ShotStore _shots;
     private OverlayForm? _form;
     private DateTime _openedAt;
     private Point _origin;
     private double _scale = 1;
     private readonly System.Windows.Forms.Timer _revealFallback = new() { Interval = 450 };
 
-    public OverlayController(EventBus bus, ShotStore shots)
+    public OverlayController(EventBus bus)
     {
-        _bus = bus; _shots = shots;
+        _bus = bus;
         _revealFallback.Tick += (_, _) => Reveal();
     }
 
@@ -51,13 +51,13 @@ internal sealed class OverlayController
         var bounds = Screen.FromPoint(cursor).Bounds; // physical px (PerMonitorV2)
         _scale = Native.ScaleAt(cursor.X, cursor.Y);
         _origin = bounds.Location;
-
-        var shot = _shots.Put(CaptureJpeg(bounds)); // capture BEFORE the overlay appears
         _openedAt = DateTime.UtcNow;
 
-        _form.Opacity = 0; // stays invisible until the page reports its first frame
-        _form.Bounds = bounds;
+        // Show it off-screen first: the page can paint its first frame (and tell us so) without a flash of an empty
+        // window; Reveal() then moves it onto the monitor.
+        _form.Bounds = new Rectangle(Offscreen, Offscreen, bounds.Width, bounds.Height);
         _form.Show();
+        Native.ClearFrame(_form.Handle);
         Native.ForceForeground(_form.Handle);
         _form.Web.Focus();
 
@@ -67,7 +67,6 @@ internal sealed class OverlayController
             y = (cursor.Y - bounds.Y) / _scale,
             w = bounds.Width / _scale,
             h = bounds.Height / _scale,
-            shot = $"/shot/{shot}",
         });
         _revealFallback.Start(); // never leave the user with an invisible window if the ack is lost
     }
@@ -75,7 +74,7 @@ internal sealed class OverlayController
     public void Reveal()
     {
         _revealFallback.Stop();
-        if (_form is { Visible: true }) _form.Opacity = 1;
+        if (_form is { Visible: true } f) { f.Location = _origin; Native.ClearFrame(f.Handle); }
     }
 
     public void Close(bool publish)
@@ -83,32 +82,21 @@ internal sealed class OverlayController
         _revealFallback.Stop();
         if (_form is null) return;
         _form.Hide();
-        _form.Opacity = 0;
         if (publish) _bus.Publish("menu:close");
     }
 
     /// <summary>Move the pointer; (x, y) are CSS px inside the overlay.</summary>
     public void Warp(double x, double y) =>
         Cursor.Position = new Point(_origin.X + (int)Math.Round(x * _scale), _origin.Y + (int)Math.Round(y * _scale));
-
-    private static byte[] CaptureJpeg(Rectangle r)
-    {
-        using var bmp = new Bitmap(r.Width, r.Height, PixelFormat.Format24bppRgb);
-        using (var g = Graphics.FromImage(bmp))
-            g.CopyFromScreen(r.Location, Point.Empty, r.Size, CopyPixelOperation.SourceCopy);
-
-        var jpeg = ImageCodecInfo.GetImageEncoders().First(e => e.FormatID == ImageFormat.Jpeg.Guid);
-        using var ps = new EncoderParameters(1);
-        ps.Param[0] = new EncoderParameter(System.Drawing.Imaging.Encoder.Quality, 85L);
-        using var ms = new MemoryStream();
-        bmp.Save(ms, jpeg, ps);
-        return ms.ToArray();
-    }
 }
 
 internal sealed class OverlayForm : Form
 {
-    public WebView2 Web { get; } = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Black };
+    private const int WM_SETTINGCHANGE = 0x001A, WM_DISPLAYCHANGE = 0x007E, WM_THEMECHANGED = 0x031A, WM_DWMCOMPOSITIONCHANGED = 0x031E;
+
+    // Black GDI pixels become transparent once the frame is extended into the client area, and the WebView2
+    // background is transparent too — so only what the page draws is visible.
+    public WebView2 Web { get; } = new() { Dock = DockStyle.Fill, DefaultBackgroundColor = Color.Transparent };
 
     public OverlayForm()
     {
@@ -117,9 +105,21 @@ internal sealed class OverlayForm : Form
         TopMost = true;
         StartPosition = FormStartPosition.Manual;
         BackColor = Color.Black;
-        Opacity = 0;
         Text = "productivity.larp overlay";
         Controls.Add(Web);
+    }
+
+    protected override void OnHandleCreated(EventArgs e)
+    {
+        base.OnHandleCreated(e);
+        Native.ClearFrame(Handle);
+    }
+
+    protected override void WndProc(ref Message m)
+    {
+        base.WndProc(ref m);
+        if (m.Msg is WM_DWMCOMPOSITIONCHANGED or WM_THEMECHANGED or WM_SETTINGCHANGE or WM_DISPLAYCHANGE)
+            BeginInvoke(() => Native.ClearFrame(Handle)); // put the transparent frame back after Windows re-applied its own
     }
 
     protected override CreateParams CreateParams

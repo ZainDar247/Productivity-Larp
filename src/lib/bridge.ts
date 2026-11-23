@@ -14,8 +14,6 @@ export interface OpenPayload {
   /** Overlay size, CSS px. */
   w: number;
   h: number;
-  /** URL of the frozen desktop picture to draw behind the ring (absent in the browser mock). */
-  shot?: string;
 }
 
 export type BridgeEvent = "menu:open" | "menu:close" | "config:changed";
@@ -33,6 +31,9 @@ export interface Bridge {
   loadImage(path: string): Promise<string>;
   openSettings(): Promise<void>;
   openConfigDir(): Promise<void>;
+  /** Is the app registered to start when the user signs in to Windows? */
+  getAutostart(): Promise<boolean>;
+  setAutostart(enabled: boolean): Promise<boolean>;
   pickFile(opts?: { title?: string; extensions?: string[] }): Promise<string | null>;
   /** Add the auth token to a same-origin URL (for <img src>). */
   assetUrl(path: string): string;
@@ -72,6 +73,8 @@ const native: Bridge = {
   loadImage: async (path) => (await api<{ dataUrl: string }>("GET", `/api/image?path=${encodeURIComponent(path)}`)).dataUrl,
   openSettings: () => api("POST", "/api/settings/open"),
   openConfigDir: () => api("POST", "/api/config-dir/open"),
+  getAutostart: async () => (await api<{ enabled: boolean }>("GET", "/api/startup")).enabled,
+  setAutostart: async (enabled) => (await api<{ enabled: boolean }>("PUT", "/api/startup", { enabled })).enabled,
   pickFile: async (opts) => (await api<{ path: string | null }>("POST", "/api/pick-file", { title: opts?.title, extensions: opts?.extensions })).path,
   assetUrl: (p) => `${p}${p.includes("?") ? "&" : "?"}t=${encodeURIComponent(token!)}`,
   async on(event, cb) {
@@ -110,6 +113,8 @@ const mock: Bridge = {
   async loadImage(path) { return path; },
   async openSettings() { mockLog.push("settings"); },
   async openConfigDir() { mockLog.push("open-config-dir"); },
+  async getAutostart() { try { return localStorage.getItem("larp.mock.autostart") === "1"; } catch { return false; } },
+  async setAutostart(enabled) { try { localStorage.setItem("larp.mock.autostart", enabled ? "1" : "0"); } catch { /* ignore */ } mockLog.push(`autostart:${enabled}`); return enabled; },
   async pickFile() { return null; },
   assetUrl: (p) => p,
   async on(event, cb) {

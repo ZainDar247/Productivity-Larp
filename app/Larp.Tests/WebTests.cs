@@ -39,7 +39,7 @@ public sealed class WebFixture : IAsyncLifetime
     public void Reset()
     {
         Store.Save(DefaultConfig.Json);
-        Desktop.Log.Clear(); Desktop.Ran.Clear(); Desktop.RejectTriggers = false;
+        Desktop.Log.Clear(); Desktop.Ran.Clear(); Desktop.RejectTriggers = false; Desktop.Autostart = false;
         Environment.SetEnvironmentVariable("RDP_DIR", null);
     }
 
@@ -72,6 +72,9 @@ public sealed class FakeDesktop : IDesktop
     public Task WarpCursorAsync(double x, double y) { Log.Add($"warp:{x},{y}"); return Task.CompletedTask; }
     public Task<string?> PickFileAsync(string? t, IReadOnlyList<string>? e) => Task.FromResult<string?>(@"C:\picked.rdp");
     public Task OpenConfigDirAsync() { Log.Add("dir"); return Task.CompletedTask; }
+    public bool Autostart { get; set; }
+    public Task<bool> GetAutostartAsync() => Task.FromResult(Autostart);
+    public Task SetAutostartAsync(bool enabled) { Autostart = enabled; Log.Add($"autostart:{enabled}"); return Task.CompletedTask; }
 }
 
 public class WebSecurityTests(WebFixture f) : IClassFixture<WebFixture>
@@ -109,7 +112,7 @@ public class WebSecurityTests(WebFixture f) : IClassFixture<WebFixture>
     {
         Assert.Equal(HttpStatusCode.OK, (await f.Http.GetAsync("/ui/app.js")).StatusCode);
         Assert.Equal(HttpStatusCode.Unauthorized, (await f.Http.GetAsync("/events")).StatusCode);
-        Assert.Equal(HttpStatusCode.Unauthorized, (await f.Http.GetAsync("/shot/1")).StatusCode);
+        Assert.Equal(HttpStatusCode.Unauthorized, (await f.Http.GetAsync("/api/startup")).StatusCode);
     }
 
     [Fact] public async Task Server_binds_loopback_only() =>
@@ -254,14 +257,26 @@ public class WebApiTests : IClassFixture<WebFixture>
         Assert.Equal(HttpStatusCode.BadRequest, bad); // a config/secret file is not an image
     }
 
-    [Fact] public async Task Screenshot_backdrop_is_served_with_the_token_and_not_cached()
+    [Fact] public async Task Startup_setting_round_trips_through_the_desktop()
     {
-        var id = f.App.Services.GetService(typeof(ShotStore)) is ShotStore s ? s.Put([0xFF, 0xD8, 0xFF]) : 0;
-        var res = await f.Http.SendAsync(f.Req(HttpMethod.Get, $"/shot/{id}"));
-        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
-        Assert.Equal("image/jpeg", res.Content.Headers.ContentType?.MediaType);
-        Assert.Contains("no-store", res.Headers.CacheControl?.ToString());
-        Assert.Equal(HttpStatusCode.NotFound, (await f.Http.SendAsync(f.Req(HttpMethod.Get, "/shot/9999"))).StatusCode);
+        f.Reset();
+        var (s0, before) = await Do(HttpMethod.Get, "/api/startup");
+        Assert.Equal(HttpStatusCode.OK, s0);
+        Assert.False(before.GetProperty("enabled").GetBoolean());
+
+        var (s1, on) = await Do(HttpMethod.Put, "/api/startup", new { enabled = true });
+        Assert.Equal(HttpStatusCode.OK, s1);
+        Assert.True(on.GetProperty("enabled").GetBoolean());
+        Assert.Contains("autostart:True", f.Desktop.Log);
+
+        var (_, off) = await Do(HttpMethod.Put, "/api/startup", new { enabled = false });
+        Assert.False(off.GetProperty("enabled").GetBoolean());
+    }
+
+    [Fact] public async Task Screenshot_backdrop_is_gone()
+    {
+        // the overlay is see-through now; nothing serves a frozen desktop picture any more
+        Assert.Equal(HttpStatusCode.NotFound, (await f.Http.SendAsync(f.Req(HttpMethod.Get, "/shot/1"))).StatusCode);
     }
 
     // ---- SSE helpers ----

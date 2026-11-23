@@ -61,4 +61,7 @@ sealed class FakeDesktop : IDesktop
     public Task WarpCursorAsync(double x, double y) { Log.Enqueue($"warp:{Math.Round(x)},{Math.Round(y)}"); return Task.CompletedTask; }
     public Task<string?> PickFileAsync(string? title, IReadOnlyList<string>? extensions) => Task.FromResult<string?>(null);
     public Task OpenConfigDirAsync() { Log.Enqueue("open-config-dir"); return Task.CompletedTask; }
+    private bool _autostart;
+    public Task<bool> GetAutostartAsync() => Task.FromResult(_autostart);
+    public Task SetAutostartAsync(bool enabled) { _autostart = enabled; Log.Enqueue($"autostart:{enabled}"); return Task.CompletedTask; }
 }

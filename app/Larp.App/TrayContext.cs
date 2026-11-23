@@ -19,9 +19,12 @@ internal sealed class TrayContext : ApplicationContext
     private readonly TriggerService _triggers;
     private readonly RegisteredWaitHandle _showWait;
 
-    public TrayContext(ConfigStore store, EventWaitHandle showSignal)
+    private readonly bool _background;
+
+    public TrayContext(ConfigStore store, EventWaitHandle showSignal, bool background)
     {
         _store = store;
+        _background = background;
         _ = _ui.Handle; // a hidden control gives us a UI-thread dispatcher
 
         using var iconStream = typeof(TrayContext).Assembly.GetManifestResourceStream("icon.ico")!;
@@ -35,7 +38,7 @@ internal sealed class TrayContext : ApplicationContext
         _web.Start();
         string Url(string page) => LarpWeb.PageUrl(_web, page, _token);
 
-        overlay = _overlay = new OverlayController(_web.Services.GetRequiredService<EventBus>(), _web.Services.GetRequiredService<ShotStore>());
+        overlay = _overlay = new OverlayController(_web.Services.GetRequiredService<EventBus>());
         settings = _settings = new SettingsController(() => Url("settings"), icon);
         triggers = _triggers = new TriggerService(_ui, () => _overlay.Visible, _overlay.Toggle, _overlay.Open);
 
@@ -70,13 +73,13 @@ internal sealed class TrayContext : ApplicationContext
         try
         {
             _triggers.Apply(_store.Current);
-            if (_store.FirstRun || _store.LoadError is not null) _settings.Open();
+            if (!_background && (_store.FirstRun || _store.LoadError is not null)) _settings.Open();
         }
         catch (LarpException e)
         {
             // e.g. the shortcut is invalid or the hook couldn't be installed: let the user fix it in Settings
             _tray.ShowBalloonTip(6000, "productivity.larp", $"The trigger isn't active: {e.Message}", ToolTipIcon.Warning);
-            _settings.Open();
+            if (!_background) _settings.Open();
         }
     }
 
@@ -85,6 +88,17 @@ internal sealed class TrayContext : ApplicationContext
         var menu = new ContextMenuStrip();
         menu.Items.Add("Settings", null, (_, _) => _settings.Open());
         menu.Items.Add("Open config folder", null, (_, _) => ActionRunner.Run(new OpenPrepared(_store.Dir)));
+        var startup = new ToolStripMenuItem("Start with Windows") { CheckOnClick = false };
+        startup.Click += (_, _) =>
+        {
+            try { Autostart.Set(!Autostart.IsEnabled()); }
+            catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+            {
+                _tray.ShowBalloonTip(5000, "productivity.larp", $"Couldn't change the startup setting: {e.Message}", ToolTipIcon.Warning);
+            }
+        };
+        menu.Opening += (_, _) => startup.Checked = Autostart.IsEnabled(); // may have been changed from Settings
+        menu.Items.Add(startup);
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => ExitThread());
         return menu;

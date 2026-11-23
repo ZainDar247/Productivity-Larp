@@ -17,7 +17,7 @@ export function Overlay() {
   const [st, setSt] = useState<MenuState>(initialState);
   const [openKey, setOpenKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
-  const [shot, setShot] = useState<string | undefined>(undefined);
+  const [dwellIdx, setDwellIdx] = useState<number | null>(null); // slice whose dwell timer is running (drives the sweep fill)
 
   // ---- config ----
   const load = useCallback(async () => {
@@ -52,6 +52,7 @@ export function Overlay() {
   const cancelDwell = () => {
     window.clearTimeout(dwell.current);
     dwell.current = undefined;
+    setDwellIdx(null);
   };
 
   const close = useCallback(() => {
@@ -97,7 +98,6 @@ export function Overlay() {
         cancelDwell();
         openedAt.current = Date.now();
         setGeom({ x: cx, y: cy, w: p.w, h: p.h });
-        setShot(p.shot);
         setSt(initialState());
         setError(null);
         setOpenKey((k) => k + 1);
@@ -119,22 +119,14 @@ export function Overlay() {
     if (cfg && st.path.length && !childrenAt(cfg.menu, st.path)) setSt(initialState());
   }, [cfg, st.path]);
 
-  // Tell the shell when the first frame (backdrop + ring) is really on screen, so the
-  // window is revealed only once there is something correct to show — no flash.
+  // Tell the shell when the first frame is really on screen, so the window is revealed only once there is
+  // something correct to show — no flash of an empty transparent window.
   useEffect(() => {
     if (!visible || openKey === 0 || !bridge.native) return;
     let cancelled = false;
-    (async () => {
-      if (shot) {
-        await new Promise<void>((res) => {
-          const img = new Image();
-          img.onload = img.onerror = () => res();
-          img.src = bridge.assetUrl(shot);
-        });
-      }
-      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+    requestAnimationFrame(() => requestAnimationFrame(() => {
       if (!cancelled) bridge.overlayReady().catch(() => {});
-    })();
+    }));
     return () => { cancelled = true; };
   }, [openKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
@@ -162,7 +154,10 @@ export function Overlay() {
       if (idx === null) return;
       const ms = L.layout.behavior.dwellMs;
       if (ms <= 0) choose(idx);
-      else dwell.current = window.setTimeout(() => choose(idx), ms);
+      else {
+        setDwellIdx(idx);
+        dwell.current = window.setTimeout(() => choose(idx), ms);
+      }
     };
     const onDown = (e: PointerEvent) => {
       const L = latest.current;
@@ -230,8 +225,6 @@ export function Overlay() {
 
   return (
     <div className="overlay">
-      {shot && <img className="backdrop" src={bridge.assetUrl(shot)} alt="" draggable={false} />}
-      <div className="dim" style={{ background: `rgba(0,0,0,${theme.dim})` }} />
       <svg width={geom.w} height={geom.h} role="menu" aria-label="Radial menu">
         <g transform={`translate(${geom.x} ${geom.y})`}>
           <Ring
@@ -243,6 +236,8 @@ export function Overlay() {
             theme={theme}
             title={title}
             subtitle={sub}
+            dwellMs={layout.behavior.dwellMs}
+            dwelling={dwellIdx !== null && dwellIdx === st.highlight}
           />
         </g>
       </svg>

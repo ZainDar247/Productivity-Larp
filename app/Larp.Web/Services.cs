@@ -49,27 +49,3 @@ public sealed class EventBus
         public void Dispose() => onDispose();
     }
 }
-
-/// <summary>Holds the most recent desktop screenshots shown behind the ring (the overlay's backdrop).</summary>
-public sealed class ShotStore
-{
-    private readonly object _gate = new();
-    private readonly Dictionary<int, byte[]> _shots = new();
-    private int _next;
-
-    public int Put(byte[] jpeg)
-    {
-        lock (_gate)
-        {
-            var id = ++_next;
-            _shots[id] = jpeg;
-            _shots.Remove(id - 2); // keep only the latest couple
-            return id;
-        }
-    }
-
-    public byte[]? Get(int id)
-    {
-        lock (_gate) return _shots.GetValueOrDefault(id);
-    }
-}

@@ -5,15 +5,18 @@ namespace Larp.App;
 internal static class Program
 {
     [STAThread]
-    private static void Main()
+    private static void Main(string[] args)
     {
+        // started by Windows at sign-in: stay quietly in the tray (no Settings window, no first-run popup)
+        var background = args.Contains(Autostart.BackgroundFlag, StringComparer.OrdinalIgnoreCase);
+
         ApplicationConfiguration.Initialize(); // PerMonitorV2 DPI, visual styles
 
         using var mutex = new Mutex(true, @"Local\larp.productivity.instance", out var first);
         using var showSignal = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\larp.productivity.show");
         if (!first)
         {
-            showSignal.Set(); // already running: just bring up its settings
+            if (!background) showSignal.Set(); // already running: just bring up its settings
             return;
         }
 
@@ -28,6 +31,6 @@ internal static class Program
             return;
         }
 
-        Application.Run(new TrayContext(store, showSignal));
+        Application.Run(new TrayContext(store, showSignal, background));
     }
 }

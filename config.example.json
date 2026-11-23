@@ -3,11 +3,7 @@
   "trigger": { "type": "keyboard", "shortcut": "Ctrl+Shift+Z", "mode": "press", "holdMs": 350 },
   "behavior": { "dwellMs": 150, "warpCursor": true },
   "theme": {
-    "mode": "dark",
-    "accent": "#7c5cff",
-    "sliceColor": "#1d2030",
-    "textColor": "#f2f3f8",
-    "dim": 0.35,
+    "preset": "dark",
     "innerRadius": 64,
     "thickness": 150,
     "gap": 6,

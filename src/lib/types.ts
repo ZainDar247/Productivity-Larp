@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { getPreset, type RingStyle } from "./themePresets";
 
 export type DisplayMode = "text" | "icon" | "image" | "icon+text" | "image+text";
 export const DISPLAY_MODES: DisplayMode[] = ["text", "icon", "image", "icon+text", "image+text"];
@@ -29,12 +30,37 @@ export interface NodeT {
   action?: ActionT;
 }
 
-export interface Theme {
+/** What may be written in config.json under "theme" (all optional). */
+export interface ThemeConfig {
+  /** One of the built-in ring themes (see themePresets.ts). */
+  preset: string;
+  /** Settings-window light/dark; defaults to whatever the preset is. */
   mode: "dark" | "light";
+  /** Optional overrides on top of the preset: */
   accent: string;
   sliceColor: string;
   textColor: string;
-  dim: number;
+  innerRadius: number;
+  thickness: number;
+  gap: number;
+  fontSize: number;
+  animation: boolean;
+}
+
+/** The fully resolved theme the ring is drawn with. */
+export interface Theme {
+  preset: string;
+  mode: "dark" | "light";
+  style: RingStyle;
+  isLight: boolean;
+  accent: string;
+  accent2: string;
+  sliceColor: string;
+  sliceHover: string;
+  rim: string;
+  center: string;
+  textColor: string;
+  subText: string;
   innerRadius: number;
   thickness: number;
   gap: number;
@@ -56,26 +82,44 @@ export type Trigger =
 export interface Config {
   version: number;
   trigger: Trigger;
-  theme?: Partial<Theme>;
+  theme?: Partial<ThemeConfig>;
   behavior?: Partial<Behavior>;
   menu: NodeT[];
 }
 
-export const DEFAULT_THEME: Theme = {
-  mode: "dark",
-  accent: "#7c5cff",
-  sliceColor: "#1d2030",
-  textColor: "#f2f3f8",
-  dim: 0.35,
-  innerRadius: 64,
-  thickness: 150,
-  gap: 6,
-  fontSize: 13,
-  animation: true,
-};
+/** Geometry defaults. */
+export const DEFAULT_LAYOUT = { innerRadius: 64, thickness: 150, gap: 6, fontSize: 13, animation: true };
+
+/** Preset first, then any explicit overrides from the config. Old configs (accent/sliceColor/textColor) keep working. */
+export function buildTheme(t: Partial<ThemeConfig> = {}): Theme {
+  const p = getPreset(t.preset);
+  const accent = t.accent ?? p.accent;
+  const sliceColor = t.sliceColor ?? p.slice;
+  return {
+    preset: p.id,
+    mode: t.mode ?? (p.isLight ? "light" : "dark"),
+    style: p.style,
+    isLight: p.isLight,
+    accent,
+    accent2: t.accent ?? p.accent2,
+    sliceColor,
+    sliceHover: t.sliceColor ? `color-mix(in srgb, ${sliceColor} 78%, ${accent})` : p.sliceHover,
+    rim: p.rim,
+    center: t.sliceColor ?? p.center,
+    textColor: t.textColor ?? p.text,
+    subText: t.textColor ?? p.subText,
+    innerRadius: t.innerRadius ?? DEFAULT_LAYOUT.innerRadius,
+    thickness: t.thickness ?? DEFAULT_LAYOUT.thickness,
+    gap: t.gap ?? DEFAULT_LAYOUT.gap,
+    fontSize: t.fontSize ?? DEFAULT_LAYOUT.fontSize,
+    animation: t.animation ?? DEFAULT_LAYOUT.animation,
+  };
+}
+
+export const DEFAULT_THEME: Theme = buildTheme();
 export const DEFAULT_BEHAVIOR: Behavior = { dwellMs: 150, warpCursor: true };
 
-export const resolveTheme = (c: Config): Theme => ({ ...DEFAULT_THEME, ...c.theme });
+export const resolveTheme = (c: Config): Theme => buildTheme(c.theme);
 export const resolveBehavior = (c: Config): Behavior => ({ ...DEFAULT_BEHAVIOR, ...c.behavior });
 
 // ---- validation (loose: unknown keys survive a load/save round-trip) ----

@@ -6,6 +6,7 @@ namespace Larp.Web.Controllers;
 public sealed record ConfigPayload(string Raw, string? Error, string ConfigDir, bool FirstRun);
 public sealed record SaveRequest(string Json);
 public sealed record WarpRequest(double X, double Y);
+public sealed record AutostartRequest(bool Enabled);
 public sealed record PickRequest(string? Title, string[]? Extensions);
 
 /// <summary>The JSON API the React UI talks to. Every call is token-protected by <see cref="LocalOnlyMiddleware"/>.</summary>
@@ -76,6 +77,23 @@ public sealed class ApiController(ConfigStore store, IDesktop desktop, EventBus 
 
     [HttpPost("settings/open")]
     public async Task<IActionResult> OpenSettings() { await desktop.OpenSettingsAsync(); return NoContent(); }
+
+    [HttpGet("startup")]
+    public async Task<object> GetStartup() => new { enabled = await desktop.GetAutostartAsync() };
+
+    [HttpPut("startup")]
+    public async Task<IActionResult> SetStartup([FromBody] AutostartRequest r)
+    {
+        try
+        {
+            await desktop.SetAutostartAsync(r.Enabled);
+            return Ok(new { enabled = await desktop.GetAutostartAsync() });
+        }
+        catch (Exception e) when (e is UnauthorizedAccessException or System.Security.SecurityException or IOException)
+        {
+            return Problem400(new LarpException($"could not change the Windows startup setting: {e.Message}"));
+        }
+    }
 
     [HttpPost("config-dir/open")]
     public async Task<IActionResult> OpenConfigDir() { await desktop.OpenConfigDirAsync(); return NoContent(); }

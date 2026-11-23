@@ -25,6 +25,10 @@ internal sealed class WindowsDesktop(
 
     public Task OpenConfigDirAsync() => Task.Run(() => ActionRunner.Run(new OpenPrepared(store.Dir)));
 
+    public Task<bool> GetAutostartAsync() => Task.Run(Autostart.IsEnabled);
+
+    public Task SetAutostartAsync(bool enabled) => Task.Run(() => Autostart.Set(enabled));
+
     public Task<string?> PickFileAsync(string? title, IReadOnlyList<string>? extensions)
     {
         var tcs = new TaskCompletionSource<string?>();

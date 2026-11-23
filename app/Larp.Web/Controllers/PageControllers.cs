@@ -58,16 +58,3 @@ public sealed class EventsController(EventBus bus) : ControllerBase
         await Response.Body.FlushAsync(ct);
     }
 }
-
-/// <summary>The frozen desktop picture drawn behind the ring.</summary>
-public sealed class ShotController(ShotStore shots) : ControllerBase
-{
-    [HttpGet("/shot/{id:int}")]
-    public IActionResult Get(int id)
-    {
-        var bytes = shots.Get(id);
-        if (bytes is null) return NotFound();
-        Response.Headers.CacheControl = "no-store";
-        return File(bytes, "image/jpeg");
-    }
-}

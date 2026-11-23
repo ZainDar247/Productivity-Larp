@@ -26,4 +26,8 @@ public interface IDesktop
 
     Task<string?> PickFileAsync(string? title, IReadOnlyList<string>? extensions);
     Task OpenConfigDirAsync();
+
+    /// <summary>Is the app registered to start (silently, in the tray) when the user signs in?</summary>
+    Task<bool> GetAutostartAsync();
+    Task SetAutostartAsync(bool enabled);
 }

@@ -50,6 +50,39 @@ internal static class Native
         return 1.0;
     }
 
+    // ---- see-through window (DWM glass + transparent WebView2), ported from the PSW wheel ----
+    [StructLayout(LayoutKind.Sequential)] private struct Margins { public int Left, Right, Top, Bottom; }
+    [StructLayout(LayoutKind.Sequential)] private struct BlurBehind { public int Flags; public bool Enable; public nint Region; public bool TransitionOnMaximized; }
+    [DllImport("dwmapi.dll")] private static extern int DwmExtendFrameIntoClientArea(nint hwnd, ref Margins m);
+    [DllImport("dwmapi.dll")] private static extern int DwmEnableBlurBehindWindow(nint hwnd, ref BlurBehind bb);
+    [DllImport("dwmapi.dll")] private static extern int DwmSetWindowAttribute(nint hwnd, int attr, ref int value, int size);
+    [DllImport("gdi32.dll")] private static extern nint CreateRectRgn(int l, int t, int r, int b);
+    [DllImport("gdi32.dll")] private static extern bool DeleteObject(nint o);
+
+    /// <summary>
+    /// Makes the whole window see-through. Safe to call repeatedly — and it has to be: DWM can re-apply its
+    /// frame (at logon, on theme / composition changes), which would otherwise leave a dark slab behind the ring.
+    /// </summary>
+    public static void ClearFrame(nint hwnd)
+    {
+        if (hwnd == 0) return;
+        var all = new Margins { Left = -1, Right = -1, Top = -1, Bottom = -1 };
+        DwmExtendFrameIntoClientArea(hwnd, ref all);
+
+        // an empty blur region makes the glass frame fully transparent (no slab, no blur)
+        var empty = CreateRectRgn(0, 0, -1, -1);
+        var bb = new BlurBehind { Flags = 0x3 /* ENABLE | BLURREGION */, Enable = true, Region = empty };
+        DwmEnableBlurBehindWindow(hwnd, ref bb);
+        DeleteObject(empty);
+
+        var none = 1;                                    // DWMSBT_NONE: no Mica/acrylic backdrop
+        DwmSetWindowAttribute(hwnd, 38 /* DWMWA_SYSTEMBACKDROP_TYPE */, ref none, sizeof(int));
+        var noBorder = unchecked((int)0xFFFFFFFE);       // DWMWA_COLOR_NONE
+        DwmSetWindowAttribute(hwnd, 34 /* DWMWA_BORDER_COLOR */, ref noBorder, sizeof(int));
+        var square = 1;                                  // DWMWCP_DONOTROUND
+        DwmSetWindowAttribute(hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref square, sizeof(int));
+    }
+
     public static bool KeyDown(int vk) => (GetAsyncKeyState(vk) & 0x8000) != 0;
 
     /// <summary>

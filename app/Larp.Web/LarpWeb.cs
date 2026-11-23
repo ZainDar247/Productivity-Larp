@@ -14,7 +14,7 @@ public static class LarpWeb
 {
     public const string TokenHeader = "X-Larp-Token";
 
-    /// <summary>Build (not start) the local MVC backend: API, event stream, screenshot backdrop and the two React host pages.</summary>
+    /// <summary>Build (not start) the local MVC backend: API, event stream and the two React host pages.</summary>
     public static WebApplication Create(LarpWebOptions o, Action<ILoggingBuilder>? logging = null)
     {
         var builder = WebApplication.CreateBuilder(new WebApplicationOptions
@@ -33,7 +33,6 @@ public static class LarpWeb
         builder.Services.AddSingleton(o.Store);
         builder.Services.AddSingleton(o.Desktop);
         builder.Services.AddSingleton<EventBus>();
-        builder.Services.AddSingleton<ShotStore>();
         // nothing here uses cookies/antiforgery, so never persist data-protection keys to disk
         builder.Services.AddDataProtection().UseEphemeralDataProtectionProvider();
         builder.Services.AddControllersWithViews().AddApplicationPart(typeof(LarpWeb).Assembly);

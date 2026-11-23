@@ -1,7 +1,8 @@
 import { useEffect, useState } from "react";
 import { bridge } from "../lib/bridge";
 import { buildItems } from "../lib/menuState";
-import { DEFAULT_BEHAVIOR, DEFAULT_THEME, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type Trigger } from "../lib/types";
+import { DEFAULT_BEHAVIOR, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
+import { PRESETS, toHex } from "../lib/themePresets";
 import { fitCount } from "../lib/geometry";
 import { Ring } from "../ui/Ring";
 import { ColorInput, Field, Slider } from "./widgets";
@@ -84,37 +85,59 @@ export function TriggerTab({ cfg, setCfg }: P) {
 }
 
 // ---------------- Appearance ----------------
-const PRESETS: { name: string; theme: Partial<Theme> }[] = [
-  { name: "Midnight", theme: { mode: "dark", accent: "#7c5cff", sliceColor: "#1d2030", textColor: "#f2f3f8" } },
-  { name: "Emerald", theme: { mode: "dark", accent: "#10b981", sliceColor: "#14231f", textColor: "#ecfdf5" } },
-  { name: "Ember", theme: { mode: "dark", accent: "#f97316", sliceColor: "#2a1d17", textColor: "#fff7ed" } },
-  { name: "Mono", theme: { mode: "dark", accent: "#e5e7eb", sliceColor: "#17181b", textColor: "#e5e7eb" } },
-  { name: "Daylight", theme: { mode: "light", accent: "#4f46e5", sliceColor: "#ffffff", textColor: "#1f2430" } },
-];
+const OVERRIDES: (keyof ThemeConfig)[] = ["accent", "sliceColor", "textColor", "mode"];
 
 export function AppearanceTab({ cfg, setCfg }: P) {
   const th = resolveTheme(cfg);
-  const set = (p: Partial<Theme>) => setCfg({ ...cfg, theme: { ...cfg.theme, ...p } });
+  const set = (p: Partial<ThemeConfig>) => setCfg({ ...cfg, theme: { ...cfg.theme, ...p } });
+  // picking a theme starts from that theme's own colours: drop the colour overrides
+  const pick = (id: string) => {
+    const next = { ...cfg.theme, preset: id };
+    for (const k of OVERRIDES) delete next[k];
+    setCfg({ ...cfg, theme: next });
+  };
+  const hasOverrides = OVERRIDES.some((k) => cfg.theme?.[k] !== undefined);
   const inner = Math.min(th.innerRadius, 120);
   const outer = inner + Math.min(th.thickness, 220);
   const sample = buildItems(cfg.menu, false, 0, fitCount(inner, outer)).items;
-  const pad = outer + 10;
+  const pad = outer + 14;
   return (
     <div className="two">
       <div className="form">
-        <Field label="Presets">
-          <span className="chips">{PRESETS.map((p) => <button type="button" key={p.name} className="chip" onClick={() => set(p.theme)}>{p.name}</button>)}</span>
+        <Field label="Theme">
+          <div className="theme-grid" role="radiogroup" aria-label="Ring theme">
+            {PRESETS.map((p) => (
+              <button
+                type="button"
+                key={p.id}
+                role="radio"
+                aria-checked={th.preset === p.id}
+                className={"theme-card" + (th.preset === p.id ? " on" : "")}
+                onClick={() => pick(p.id)}
+              >
+                <span className="theme-swatch" style={{ background: `linear-gradient(135deg, ${p.accent}, ${p.accent2})` }}>
+                  <span style={{ background: p.slice, borderColor: p.rim }} />
+                </span>
+                {p.label}
+              </button>
+            ))}
+          </div>
         </Field>
         <Field label="Settings window"><select value={th.mode} onChange={(e) => set({ mode: e.target.value as Theme["mode"] })}><option value="dark">Dark</option><option value="light">Light</option></select></Field>
-        <Field label="Highlight colour"><ColorInput value={th.accent} fallback={DEFAULT_THEME.accent} onChange={(v) => set({ accent: v ?? DEFAULT_THEME.accent })} /></Field>
-        <Field label="Slice colour"><ColorInput value={th.sliceColor} fallback={DEFAULT_THEME.sliceColor} onChange={(v) => set({ sliceColor: v ?? DEFAULT_THEME.sliceColor })} /></Field>
-        <Field label="Text colour"><ColorInput value={th.textColor} fallback={DEFAULT_THEME.textColor} onChange={(v) => set({ textColor: v ?? DEFAULT_THEME.textColor })} /></Field>
-        <Field label="Screen dimming"><Slider value={th.dim} min={0} max={0.9} step={0.05} onChange={(dim) => set({ dim })} /></Field>
         <Field label="Centre size"><Slider value={th.innerRadius} min={30} max={140} unit=" px" onChange={(innerRadius) => set({ innerRadius })} /></Field>
         <Field label="Ring thickness"><Slider value={th.thickness} min={60} max={320} unit=" px" onChange={(thickness) => set({ thickness })} /></Field>
         <Field label="Gap between slices"><Slider value={th.gap} min={0} max={24} unit=" px" onChange={(gap) => set({ gap })} /></Field>
         <Field label="Text size"><Slider value={th.fontSize} min={9} max={24} unit=" px" onChange={(fontSize) => set({ fontSize })} /></Field>
         <label className="check"><input type="checkbox" checked={th.animation} onChange={(e) => set({ animation: e.target.checked })} /> Animations</label>
+
+        <details className="adv-colors" open={hasOverrides}>
+          <summary>Advanced colour overrides</summary>
+          <p className="field-hint">Optional: these sit on top of the chosen theme. Picking a theme clears them.</p>
+          <Field label="Highlight colour"><ColorInput value={cfg.theme?.accent} fallback={toHex(th.accent)} onChange={(v) => set({ accent: v ?? undefined })} /></Field>
+          <Field label="Slice colour"><ColorInput value={cfg.theme?.sliceColor} fallback={toHex(th.sliceColor)} onChange={(v) => set({ sliceColor: v ?? undefined })} /></Field>
+          <Field label="Text colour"><ColorInput value={cfg.theme?.textColor} fallback={toHex(th.textColor)} onChange={(v) => set({ textColor: v ?? undefined })} /></Field>
+          <button type="button" className="btn" disabled={!hasOverrides} onClick={() => pick(th.preset)}>Clear overrides</button>
+        </details>
       </div>
       <section className="pane preview">
         <h4>Live preview</h4>
@@ -127,6 +150,24 @@ export function AppearanceTab({ cfg, setCfg }: P) {
 }
 
 // ---------------- Behaviour ----------------
+/** Not part of config.json: registers/unregisters the app with Windows right away (no Save needed). */
+function StartupToggle() {
+  const [on, setOn] = useState<boolean | null>(null);
+  const [err, setErr] = useState<string | null>(null);
+  useEffect(() => { bridge.getAutostart().then(setOn).catch((e) => setErr(String(e))); }, []);
+  return (
+    <>
+      <label className="check">
+        <input type="checkbox" disabled={on === null} checked={!!on}
+          onChange={(e) => { setErr(null); bridge.setAutostart(e.target.checked).then(setOn).catch((x) => setErr(String(x))); }} />
+        Start productivity.larp when I sign in to Windows
+      </label>
+      <p className="muted small">It starts silently in the tray and keeps running in the background, so your shortcut works straight away. This applies immediately — no Save needed.</p>
+      {err && <div className="banner err">{err}</div>}
+    </>
+  );
+}
+
 export function BehaviorTab({ cfg, setCfg }: P) {
   const b = resolveBehavior(cfg);
   const set = (p: Partial<typeof b>) => setCfg({ ...cfg, behavior: { ...cfg.behavior, ...p } });
@@ -140,6 +181,8 @@ export function BehaviorTab({ cfg, setCfg }: P) {
         Move the cursor back to the centre when a new layer opens (recommended)
       </label>
       <p className="muted small">Defaults: {DEFAULT_BEHAVIOR.dwellMs} ms, re-centre on.</p>
+      <h4>Background</h4>
+      <StartupToggle />
       <h4>Keyboard (in the open menu)</h4>
       <ul className="muted">
         <li><kbd>←</kbd> <kbd>↑</kbd> / <kbd>→</kbd> <kbd>↓</kbd> or <kbd>Tab</kbd> — move around the ring</li>
