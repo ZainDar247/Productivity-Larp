@@ -151,7 +151,7 @@ export function Overlay() {
       cancelDwell();
       setError(null);
       setSt((s) => ({ ...s, highlight: idx }));
-      if (idx === null) return;
+      if (idx === null || L.layout.behavior.activation === "click") return; // click mode: hover only highlights
       const ms = L.layout.behavior.dwellMs;
       if (ms <= 0) choose(idx);
       else {

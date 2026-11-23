@@ -1,10 +1,8 @@
 import { useEffect, useState } from "react";
 import { bridge } from "../lib/bridge";
-import { buildItems } from "../lib/menuState";
 import { DEFAULT_BEHAVIOR, DEFAULT_LAYOUT, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
 import { PRESETS, toHex } from "../lib/themePresets";
-import { fitCount } from "../lib/geometry";
-import { Ring } from "../ui/Ring";
+import { RingPreview } from "./RingPreview";
 import { ColorInput, Field, Slider } from "./widgets";
 import exampleConfig from "../../config.example.json?raw";
 
@@ -97,10 +95,6 @@ export function AppearanceTab({ cfg, setCfg }: P) {
     setCfg({ ...cfg, theme: next });
   };
   const hasOverrides = OVERRIDES.some((k) => cfg.theme?.[k] !== undefined);
-  const inner = Math.min(th.innerRadius, 120);
-  const outer = inner + Math.min(th.thickness, 220);
-  const sample = buildItems(cfg.menu, false, 0, fitCount(inner, outer)).items;
-  const pad = outer + 14;
   return (
     <div className="two">
       <div className="form">
@@ -144,9 +138,8 @@ export function AppearanceTab({ cfg, setCfg }: P) {
       </div>
       <section className="pane preview">
         <h4>Live preview</h4>
-        <svg viewBox={`${-pad} ${-pad} ${pad * 2} ${pad * 2}`} className="preview-svg">
-          <Ring items={sample} highlight={sample.length ? 0 : null} innerR={inner} outerR={outer} theme={th} title="Preview" />
-        </svg>
+        <RingPreview cfg={cfg} />
+        <p className="muted small">Real size and behaviour — hover, {resolveBehavior(cfg).activation === "click" ? "click" : "rest on, or click,"} a slice to try it. Actions are not run.</p>
       </section>
     </div>
   );
@@ -176,7 +169,13 @@ export function BehaviorTab({ cfg, setCfg }: P) {
   const set = (p: Partial<typeof b>) => setCfg({ ...cfg, behavior: { ...cfg.behavior, ...p } });
   return (
     <div className="form wide">
-      <Field label="Hover time before a slice fires" hint="The pointer must rest on a slice this long. 0 = instant (careful: any movement can trigger actions). A click always fires immediately.">
+      <Field label="A slice is activated by" hint={b.activation === "click" ? "Hovering only highlights a slice; nothing happens until you click it (or press Enter)." : "Resting the pointer on a slice fires it after the hover time below. Clicking fires it immediately."}>
+        <span className="seg">
+          <button type="button" className={"seg-btn" + (b.activation === "hover" ? " on" : "")} onClick={() => set({ activation: "hover" })}>Mouse hover</button>
+          <button type="button" className={"seg-btn" + (b.activation === "click" ? " on" : "")} onClick={() => set({ activation: "click" })}>Mouse click</button>
+        </span>
+      </Field>
+      <Field label="Hover time before a slice fires" hint={b.activation === "click" ? "Not used in click mode." : "The pointer must rest on a slice this long. 0 = instant (careful: any movement can trigger actions)."}>
         <Slider value={b.dwellMs} min={0} max={1000} step={10} unit=" ms" onChange={(dwellMs) => set({ dwellMs })} />
       </Field>
       <label className="check">

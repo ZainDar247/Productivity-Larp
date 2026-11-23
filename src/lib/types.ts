@@ -75,6 +75,8 @@ export interface Theme {
 export interface Behavior {
   dwellMs: number;
   warpCursor: boolean;
+  /** "hover": resting on a slice fires it after dwellMs (a click fires it at once). "click": only a click / Enter fires it. */
+  activation: "hover" | "click";
 }
 
 export type MouseButton = "left" | "right" | "middle" | "back" | "forward";
@@ -123,7 +125,7 @@ export function buildTheme(t: Partial<ThemeConfig> = {}): Theme {
 }
 
 export const DEFAULT_THEME: Theme = buildTheme();
-export const DEFAULT_BEHAVIOR: Behavior = { dwellMs: 150, warpCursor: true };
+export const DEFAULT_BEHAVIOR: Behavior = { dwellMs: 150, warpCursor: true, activation: "hover" };
 
 export const resolveTheme = (c: Config): Theme => buildTheme(c.theme);
 export const resolveBehavior = (c: Config): Behavior => ({ ...DEFAULT_BEHAVIOR, ...c.behavior });
