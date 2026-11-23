@@ -84,6 +84,53 @@ public class ActionTests
         Assert.True(p.Hidden);
     }
 
+    [Fact] public void Terminal_run_is_prepared_with_expanded_command_shell_and_keep_open()
+    {
+        var p = Assert.IsType<TerminalPrepared>(ActionPreparer.Prepare(new RunAction("dir ${RDP_DIR}", [], "${RDP_DIR}", false, true, "cmd", false), Look));
+        Assert.Equal(@"dir C:\rdp", p.CommandLine);
+        Assert.Equal("cmd", p.Shell);
+        Assert.False(p.KeepOpen);
+        Assert.Equal(@"C:\rdp", p.Cwd);
+    }
+
+    [Fact] public void Terminal_run_defaults_to_powershell_and_keeps_the_window_open()
+    {
+        var p = Assert.IsType<TerminalPrepared>(ActionPreparer.Prepare(new RunAction("npm run dev", [], null, false, Terminal: true), Look));
+        Assert.Equal("powershell", p.Shell);
+        Assert.True(p.KeepOpen);
+    }
+
+    [Fact] public void Terminal_launch_uses_a_visible_console_with_the_right_flags()
+    {
+        var keep = ActionRunner.TerminalStart(new TerminalPrepared("npm run dev", "powershell", true, null));
+        Assert.Equal("powershell.exe", keep.FileName);
+        Assert.Equal(["-NoExit", "-Command", "npm run dev"], keep.ArgumentList);
+        Assert.False(keep.CreateNoWindow);
+
+        var close = ActionRunner.TerminalStart(new TerminalPrepared("npm run dev", "pwsh", false, @"C:\app"));
+        Assert.Equal("pwsh.exe", close.FileName);
+        Assert.Equal(["-Command", "npm run dev"], close.ArgumentList);
+        Assert.Equal(@"C:\app", close.WorkingDirectory);
+
+        var cmdKeep = ActionRunner.TerminalStart(new TerminalPrepared("echo \"hi\"", "cmd", true, null));
+        Assert.Equal("cmd.exe", cmdKeep.FileName);
+        Assert.Equal("/s /k \"echo \"hi\"\"", cmdKeep.Arguments);
+        Assert.Equal("/s /c \"x\"", ActionRunner.TerminalStart(new TerminalPrepared("x", "cmd", false, null)).Arguments);
+    }
+
+    [Fact] public void Empty_terminal_command_rejected() =>
+        Assert.Throws<LarpException>(() => ActionRunner.Run(new TerminalPrepared("  ", "powershell", true, null)));
+
+    [Fact] public void Parser_reads_terminal_fields_and_rejects_unknown_shells()
+    {
+        var ok = ConfigParser.Parse("""{"trigger":{"type":"keyboard","shortcut":"F1"},"menu":[{"id":"t","action":{"type":"run","command":"npm run dev","terminal":true,"shell":"cmd","keepOpen":false}}]}""");
+        var a = Assert.IsType<RunAction>(ok.Menu[0].Action);
+        Assert.True(a.Terminal);
+        Assert.Equal("cmd", a.Shell);
+        Assert.False(a.KeepOpen);
+        Assert.Throws<ConfigException>(() => ConfigParser.Parse("""{"trigger":{"type":"keyboard","shortcut":"F1"},"menu":[{"id":"t","action":{"type":"run","command":"x","terminal":true,"shell":"bash"}}]}"""));
+    }
+
     [Fact] public void Missing_env_fails_before_anything_launches() =>
         Assert.Throws<MissingEnvException>(() => ActionPreparer.Prepare(new OpenAction("${SECRET_PATH}"), Look));
 

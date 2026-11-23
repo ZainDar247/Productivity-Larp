@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { addNode, allIds, duplicateNode, findNode, indentNode, locate, moveNode, outdentNode, removeNode, uniqueId } from "./treeOps";
+import { addNode, allIds, canMoveTo, moveTo, duplicateNode, findNode, indentNode, locate, moveNode, outdentNode, removeNode, uniqueId } from "./treeOps";
 import type { NodeT } from "./types";
 
 const leaf = (id: string): NodeT => ({ id, action: { type: "url", url: "u" } });
@@ -49,5 +49,37 @@ describe("treeOps", () => {
     expect(new Set(ids).size).toBe(ids.length);
     expect(newId).not.toBe("a");
     expect(allIds(menu).size).toBe(8); // 5 original + a copy of a, a1, a2
+  });
+});
+
+describe("drag and drop moves", () => {
+  it("drops before / after a sibling at the root", () => {
+    expect(moveTo(mk(), "c", "a", "before").map((n) => n.id)).toEqual(["c", "a", "b"]);
+    expect(moveTo(mk(), "a", "c", "after").map((n) => n.id)).toEqual(["b", "c", "a"]);
+  });
+  it("moves an item into another folder (as its last child)", () => {
+    const m = moveTo(mk(), "c", "a", "into");
+    expect(findNode(m, "a")?.children?.map((n) => n.id)).toEqual(["a1", "a2", "c"]);
+    expect(m.map((n) => n.id)).toEqual(["a", "b"]);
+  });
+  it("moves an item out of its folder to sit beside a root item", () => {
+    const m = moveTo(mk(), "a1", "c", "before");
+    expect(m.map((n) => n.id)).toEqual(["a", "b", "a1", "c"]);
+    expect(findNode(m, "a")?.children?.map((n) => n.id)).toEqual(["a2"]);
+  });
+  it("reorders within a folder and handles drop after the last item", () => {
+    expect(findNode(moveTo(mk(), "a1", "a2", "after"), "a")?.children?.map((n) => n.id)).toEqual(["a2", "a1"]);
+  });
+  it("refuses to drop a folder onto itself or into its own subtree", () => {
+    expect(canMoveTo(mk(), "a", "a", "into")).toBe(false);
+    expect(canMoveTo(mk(), "a", "a1", "before")).toBe(false);
+    expect(moveTo(mk(), "a", "a1", "after")).toEqual(mk());
+  });
+  it("refuses 'into' a plain item", () => {
+    expect(canMoveTo(mk(), "a1", "c", "into")).toBe(false);
+  });
+  it("never loses or duplicates nodes", () => {
+    const before = [...allIds(mk())].sort();
+    expect([...allIds(moveTo(mk(), "a2", "b", "into"))].sort()).toEqual(before);
   });
 });

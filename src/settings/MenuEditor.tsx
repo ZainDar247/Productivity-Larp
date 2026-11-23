@@ -1,8 +1,8 @@
-import { useMemo, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import { ArrowDown, ArrowUp, ChevronDown, ChevronRight, Copy, CornerLeftUp, CornerRightDown, Folder, FolderPlus, Plus, Trash2 } from "lucide-react";
 import { clamp, fitCount } from "../lib/geometry";
 import { buildItems } from "../lib/menuState";
-import { addNode, duplicateNode, findNode, indentNode, locate, mapNode, moveNode, outdentNode, removeNode, uniqueId } from "../lib/treeOps";
+import { addNode, canMoveTo, duplicateNode, findNode, indentNode, locate, mapNode, moveNode, moveTo, outdentNode, removeNode, uniqueId, type DropPos } from "../lib/treeOps";
 import type { Config, NodeT, Theme } from "../lib/types";
 import { Ring } from "../ui/Ring";
 import { iconByName } from "../ui/Glyph";
@@ -14,15 +14,29 @@ interface Props {
   setMenu: (m: NodeT[]) => void;
 }
 
-function Row({ node, depth, sel, collapsed, onSel, onToggle }: {
-  node: NodeT; depth: number; sel: string | null; collapsed: Set<string>; onSel: (id: string) => void; onToggle: (id: string) => void;
+/** Drag-and-drop wiring shared by every row of the tree (pointer based: press and hold, then move). */
+interface Dnd {
+  dragId: string | null;
+  drop: { id: string; pos: DropPos } | null;
+  press: (e: React.PointerEvent, node: NodeT) => void;
+}
+
+function Row({ node, depth, sel, collapsed, onSel, onToggle, dnd }: {
+  node: NodeT; depth: number; sel: string | null; collapsed: Set<string>; onSel: (id: string) => void; onToggle: (id: string) => void; dnd: Dnd;
 }) {
   const folder = Array.isArray(node.children);
   const open = !collapsed.has(node.id);
   const Icon = iconByName(node.icon) ?? (folder ? Folder : undefined);
+  const dropHere = dnd.drop?.id === node.id ? dnd.drop.pos : null;
   return (
     <>
-      <div className={"tree-row" + (sel === node.id ? " on" : "")} style={{ paddingLeft: 8 + depth * 16 }} onClick={() => onSel(node.id)}>
+      <div
+        data-row-id={node.id}
+        className={"tree-row" + (sel === node.id ? " on" : "") + (dnd.dragId === node.id ? " dragging" : "") + (dropHere ? ` drop-${dropHere}` : "")}
+        style={{ paddingLeft: 8 + depth * 16 }}
+        onClick={() => onSel(node.id)}
+        onPointerDown={(e) => dnd.press(e, node)}
+      >
         <span className="twisty" onClick={(e) => { e.stopPropagation(); folder && onToggle(node.id); }}>
           {folder ? (open ? <ChevronDown size={14} /> : <ChevronRight size={14} />) : null}
         </span>
@@ -31,7 +45,7 @@ function Row({ node, depth, sel, collapsed, onSel, onToggle }: {
         {folder && <span className="badge">{node.children!.length}</span>}
       </div>
       {folder && open && node.children!.map((c) => (
-        <Row key={c.id} node={c} depth={depth + 1} sel={sel} collapsed={collapsed} onSel={onSel} onToggle={onToggle} />
+        <Row key={c.id} node={c} depth={depth + 1} sel={sel} collapsed={collapsed} onSel={onSel} onToggle={onToggle} dnd={dnd} />
       ))}
     </>
   );
@@ -43,6 +57,77 @@ export function MenuEditor({ cfg, theme, setMenu }: Props) {
   const menu = cfg.menu;
   const node = sel ? findNode(menu, sel) : null;
   const loc = sel ? locate(menu, sel) : null;
+
+  // ---- drag & drop: press and hold a row (or just drag it), then move. Top of a row = before, bottom = after,
+  // middle of a folder = into it. Pointer events instead of HTML5 drag, so it behaves the same everywhere. ----
+  const [dragId, setDragId] = useState<string | null>(null);
+  const [drop, setDrop] = useState<{ id: string; pos: DropPos } | null>(null);
+  const [ghost, setGhost] = useState<{ x: number; y: number; label: string } | null>(null);
+  const listRef = useRef<HTMLDivElement>(null);
+
+  const press = (e: React.PointerEvent, n: NodeT) => {
+    if (e.button !== 0 || (e.target as HTMLElement).closest(".twisty")) return;
+    const sx = e.clientX, sy = e.clientY, label = n.label ?? n.id, tree = menu;
+    let started = false, target: { id: string; pos: DropPos } | null = null, hold: number | undefined;
+
+    const begin = () => {
+      if (started) return;
+      started = true;
+      window.clearTimeout(hold);
+      setDragId(n.id);
+      document.body.classList.add("dragging-row");
+      setGhost({ x: sx, y: sy, label });
+    };
+    const stop = () => {
+      window.clearTimeout(hold);
+      window.removeEventListener("pointermove", move);
+      window.removeEventListener("pointerup", up);
+      window.removeEventListener("pointercancel", cancel);
+      window.removeEventListener("keydown", key, true);
+      document.body.classList.remove("dragging-row");
+      setDragId(null); setDrop(null); setGhost(null);
+    };
+    const move = (ev: PointerEvent) => {
+      if (!started) {
+        if (Math.hypot(ev.clientX - sx, ev.clientY - sy) < 5) return;
+        begin();
+      }
+      setGhost({ x: ev.clientX, y: ev.clientY, label });
+      const list = listRef.current;
+      if (list) { // scroll the tree when dragging near its top or bottom edge
+        const r = list.getBoundingClientRect();
+        if (ev.clientY < r.top + 28) list.scrollTop -= 12;
+        else if (ev.clientY > r.bottom - 28) list.scrollTop += 12;
+      }
+      const row = document.elementFromPoint(ev.clientX, ev.clientY)?.closest<HTMLElement>("[data-row-id]");
+      const id = row?.dataset.rowId;
+      const tn = id ? findNode(tree, id) : null;
+      if (!row || !id || !tn) { target = null; setDrop(null); return; }
+      const rr = row.getBoundingClientRect();
+      const y = (ev.clientY - rr.top) / rr.height;
+      const pos: DropPos = Array.isArray(tn.children) ? (y < 0.28 ? "before" : y > 0.72 ? "after" : "into") : y < 0.5 ? "before" : "after";
+      target = canMoveTo(tree, n.id, id, pos) ? { id, pos } : null;
+      setDrop((d) => (d?.id === target?.id && d?.pos === target?.pos ? d : target));
+    };
+    const up = () => {
+      const t = target, wasDrag = started;
+      stop();
+      if (wasDrag && t) {
+        setMenu(moveTo(tree, n.id, t.id, t.pos));
+        if (t.pos === "into") setCollapsed((c) => { const x = new Set(c); x.delete(t.id); return x; });
+        setSel(n.id);
+      }
+    };
+    const cancel = () => stop();
+    const key = (ev: KeyboardEvent) => { if (ev.key === "Escape") { ev.stopPropagation(); stop(); } };
+
+    hold = window.setTimeout(begin, 220); // press and hold = start dragging, no movement needed
+    window.addEventListener("pointermove", move);
+    window.addEventListener("pointerup", up);
+    window.addEventListener("pointercancel", cancel);
+    window.addEventListener("keydown", key, true);
+  };
+  const dnd: Dnd = { dragId, drop, press };
 
   const toggle = (id: string) => setCollapsed((s) => { const n = new Set(s); n.has(id) ? n.delete(id) : n.add(id); return n; });
 
@@ -103,11 +188,14 @@ export function MenuEditor({ cfg, theme, setMenu }: Props) {
           {tb("Duplicate", dup, <Copy size={15} />, !sel)}
           {tb("Delete", remove, <Trash2 size={15} />, !sel)}
         </div>
-        <div className="tree-list" role="tree">
-          {menu.map((n) => <Row key={n.id} node={n} depth={0} sel={sel} collapsed={collapsed} onSel={setSel} onToggle={toggle} />)}
+        <div className="tree-list" role="tree" ref={listRef}>
+          {menu.map((n) => <Row key={n.id} node={n} depth={0} sel={sel} collapsed={collapsed} onSel={setSel} onToggle={toggle} dnd={dnd} />)}
           {menu.length === 0 && <p className="muted pad">The menu is empty. Add your first item.</p>}
+          {menu.length > 0 && <p className="muted small pad">Tip: press and hold a row, then drag it — drop on a folder's middle to move it inside.</p>}
         </div>
       </section>
+
+      {ghost && <div className="drag-ghost" style={{ left: ghost.x + 12, top: ghost.y + 8 }}>{ghost.label}</div>}
 
       <section className="pane details">
         {node ? <NodeForm key={node.id} node={node} onChange={(n) => setMenu(mapNode(menu, node.id, () => n))} />

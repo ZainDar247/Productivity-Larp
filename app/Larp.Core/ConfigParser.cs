@@ -103,12 +103,20 @@ public static class ConfigParser
         {
             "open" => new OpenAction(ReqStr(a, "path", path)),
             "rdp" => new RdpAction(ReqStr(a, "file", path), StrList(a, "args", path)),
-            "run" => new RunAction(ReqStr(a, "command", path), StrList(a, "args", path), OptStr(a, "cwd", path), OptBool(a, "hidden", path) ?? false),
+            "run" => new RunAction(ReqStr(a, "command", path), StrList(a, "args", path), OptStr(a, "cwd", path), OptBool(a, "hidden", path) ?? false,
+                OptBool(a, "terminal", path) ?? false, ParseShell(OptStr(a, "shell", path), path), OptBool(a, "keepOpen", path) ?? true),
             "url" => new UrlAction(ReqStr(a, "url", path)),
             "settings" => new SettingsAction(),
             _ => throw new ConfigException($"{path}.type `{type}` is not one of open, rdp, run, url, settings"),
         };
     }
+
+    private static string ParseShell(string? shell, string path) => shell switch
+    {
+        null => "powershell",
+        "powershell" or "pwsh" or "cmd" => shell,
+        _ => throw new ConfigException($"{path}.shell `{shell}` is not one of powershell, pwsh, cmd"),
+    };
 
     // ---- small typed accessors that name the offending path in errors ----
     private static JsonElement Req(JsonElement o, string name, string path) =>

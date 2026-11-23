@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { bridge } from "../lib/bridge";
 import { buildItems } from "../lib/menuState";
-import { DEFAULT_BEHAVIOR, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
+import { DEFAULT_BEHAVIOR, DEFAULT_LAYOUT, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
 import { PRESETS, toHex } from "../lib/themePresets";
 import { fitCount } from "../lib/geometry";
 import { Ring } from "../ui/Ring";
@@ -124,10 +124,13 @@ export function AppearanceTab({ cfg, setCfg }: P) {
           </div>
         </Field>
         <Field label="Settings window"><select value={th.mode} onChange={(e) => set({ mode: e.target.value as Theme["mode"] })}><option value="dark">Dark</option><option value="light">Light</option></select></Field>
-        <Field label="Centre size"><Slider value={th.innerRadius} min={30} max={140} unit=" px" onChange={(innerRadius) => set({ innerRadius })} /></Field>
-        <Field label="Ring thickness"><Slider value={th.thickness} min={60} max={320} unit=" px" onChange={(thickness) => set({ thickness })} /></Field>
-        <Field label="Gap between slices"><Slider value={th.gap} min={0} max={24} unit=" px" onChange={(gap) => set({ gap })} /></Field>
-        <Field label="Text size"><Slider value={th.fontSize} min={9} max={24} unit=" px" onChange={(fontSize) => set({ fontSize })} /></Field>
+        <Field label="Overall size" hint="Scales the whole ring, text included. Lower it to make the menu smaller.">
+          <Slider value={Math.round(th.scale * 100)} min={40} max={150} unit="%" onChange={(v) => set({ scale: v / 100 })} />
+        </Field>
+        <Field label="Centre size"><Slider value={cfg.theme?.innerRadius ?? DEFAULT_LAYOUT.innerRadius} min={30} max={140} unit=" px" onChange={(innerRadius) => set({ innerRadius })} /></Field>
+        <Field label="Ring thickness"><Slider value={cfg.theme?.thickness ?? DEFAULT_LAYOUT.thickness} min={60} max={320} unit=" px" onChange={(thickness) => set({ thickness })} /></Field>
+        <Field label="Gap between slices"><Slider value={cfg.theme?.gap ?? DEFAULT_LAYOUT.gap} min={0} max={24} unit=" px" onChange={(gap) => set({ gap })} /></Field>
+        <Field label="Text size"><Slider value={cfg.theme?.fontSize ?? DEFAULT_LAYOUT.fontSize} min={9} max={24} unit=" px" onChange={(fontSize) => set({ fontSize })} /></Field>
         <label className="check"><input type="checkbox" checked={th.animation} onChange={(e) => set({ animation: e.target.checked })} /> Animations</label>
 
         <details className="adv-colors" open={hasOverrides}>

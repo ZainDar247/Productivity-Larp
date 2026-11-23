@@ -114,3 +114,35 @@ export function duplicateNode(menu: NodeT[], id: string): { menu: NodeT[]; newId
   const out = editSiblings(menu, loc.parent, (s) => [...s.slice(0, loc.index + 1), copy, ...s.slice(loc.index + 1)]);
   return { menu: out, newId: copy.id };
 }
+
+export type DropPos = "before" | "after" | "into";
+
+/** Is `id` somewhere inside the folder `ancestor`? */
+export function isInside(menu: NodeT[], ancestor: string, id: string): boolean {
+  const a = findNode(menu, ancestor);
+  return !!a?.children && findNode(a.children, id) !== null;
+}
+
+/** Can `id` be dropped on `target` at `pos`? Never onto itself or into its own subtree; "into" needs a folder. */
+export function canMoveTo(menu: NodeT[], id: string, target: string, pos: DropPos): boolean {
+  if (id === target) return false;
+  const t = findNode(menu, target);
+  if (!findNode(menu, id) || !t) return false;
+  if (isInside(menu, id, target)) return false;
+  if (pos === "into" && !t.children) return false;
+  return true;
+}
+
+/** Drag-and-drop move: put `id` before / after `target`, or as the last child of the folder `target`. */
+export function moveTo(menu: NodeT[], id: string, target: string, pos: DropPos): NodeT[] {
+  if (!canMoveTo(menu, id, target, pos)) return menu;
+  const node = findNode(menu, id)!;
+  const without = removeNode(menu, id);
+  if (pos === "into") return addNode(without, target, node);
+  const tl = locate(without, target)!;
+  return editSiblings(without, tl.parent, (s) => {
+    const at = s.findIndex((n) => n.id === target);
+    const i = pos === "before" ? at : at + 1;
+    return [...s.slice(0, i), node, ...s.slice(i)];
+  });
+}

@@ -7,14 +7,15 @@ export const DISPLAY_MODES: DisplayMode[] = ["text", "icon", "image", "icon+text
 export type ActionT =
   | { type: "open"; path: string }
   | { type: "rdp"; file: string; args?: string[] }
-  | { type: "run"; command: string; args?: string[]; cwd?: string; hidden?: boolean }
+  | { type: "run"; command: string; args?: string[]; cwd?: string; hidden?: boolean; terminal?: boolean; shell?: Shell; keepOpen?: boolean }
   | { type: "url"; url: string }
   | { type: "settings" };
 export type ActionType = ActionT["type"];
+export type Shell = "powershell" | "pwsh" | "cmd";
 export const ACTION_TYPES: { type: ActionType; label: string; hint: string }[] = [
   { type: "rdp", label: "Remote desktop (.rdp)", hint: "Opens an .rdp file with mstsc.exe" },
   { type: "open", label: "Open file / folder / app", hint: "Opens with the default handler" },
-  { type: "run", label: "Run program", hint: "Starts any executable with arguments" },
+  { type: "run", label: "Run program / command", hint: "Starts a program, or runs a command in a terminal" },
   { type: "url", label: "Open URL", hint: "Opens in the default browser" },
   { type: "settings", label: "Open settings", hint: "Opens this settings window" },
 ];
@@ -45,6 +46,8 @@ export interface ThemeConfig {
   gap: number;
   fontSize: number;
   animation: boolean;
+  /** Overall size multiplier for the whole ring (1 = normal). */
+  scale: number;
 }
 
 /** The fully resolved theme the ring is drawn with. */
@@ -66,6 +69,7 @@ export interface Theme {
   gap: number;
   fontSize: number;
   animation: boolean;
+  scale: number;
 }
 
 export interface Behavior {
@@ -95,6 +99,7 @@ export function buildTheme(t: Partial<ThemeConfig> = {}): Theme {
   const p = getPreset(t.preset);
   const accent = t.accent ?? p.accent;
   const sliceColor = t.sliceColor ?? p.slice;
+  const scale = Math.min(1.5, Math.max(0.4, typeof t.scale === "number" ? t.scale : 1));
   return {
     preset: p.id,
     mode: t.mode ?? (p.isLight ? "light" : "dark"),
@@ -108,10 +113,11 @@ export function buildTheme(t: Partial<ThemeConfig> = {}): Theme {
     center: t.sliceColor ?? p.center,
     textColor: t.textColor ?? p.text,
     subText: t.textColor ?? p.subText,
-    innerRadius: t.innerRadius ?? DEFAULT_LAYOUT.innerRadius,
-    thickness: t.thickness ?? DEFAULT_LAYOUT.thickness,
-    gap: t.gap ?? DEFAULT_LAYOUT.gap,
-    fontSize: t.fontSize ?? DEFAULT_LAYOUT.fontSize,
+    innerRadius: Math.round((t.innerRadius ?? DEFAULT_LAYOUT.innerRadius) * scale),
+    thickness: Math.round((t.thickness ?? DEFAULT_LAYOUT.thickness) * scale),
+    gap: Math.round((t.gap ?? DEFAULT_LAYOUT.gap) * scale),
+    fontSize: Math.max(8, Math.round((t.fontSize ?? DEFAULT_LAYOUT.fontSize) * scale)),
+    scale,
     animation: t.animation ?? DEFAULT_LAYOUT.animation,
   };
 }
@@ -132,6 +138,9 @@ const ActionSchema = z.discriminatedUnion("type", [
     args: z.array(z.string()).optional(),
     cwd: z.string().optional(),
     hidden: z.boolean().optional(),
+    terminal: z.boolean().optional(),
+    shell: z.enum(["powershell", "pwsh", "cmd"]).optional(),
+    keepOpen: z.boolean().optional(),
   }),
   z.looseObject({ type: z.literal("url"), url: z.string() }),
   z.looseObject({ type: z.literal("settings") }),

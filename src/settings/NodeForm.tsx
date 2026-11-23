@@ -1,4 +1,4 @@
-import { ACTION_TYPES, DISPLAY_MODES, type ActionT, type ActionType, type NodeT } from "../lib/types";
+import { ACTION_TYPES, DISPLAY_MODES, type ActionT, type ActionType, type NodeT, type Shell } from "../lib/types";
 import { ColorInput, Field, IconPicker, ImageInput, PathInput } from "./widgets";
 
 const DISPLAY_LABEL: Record<string, string> = {
@@ -44,8 +44,36 @@ function ActionEditor({ action, onChange }: { action: ActionT; onChange: (a: Act
       {action.type === "url" && (
         <Field label="URL"><input value={action.url} onChange={(e) => set({ url: e.target.value })} spellCheck={false} /></Field>
       )}
-      {action.type === "run" && (
+      {action.type === "run" && action.terminal && (
         <>
+          <Field label="Run as">
+            <span className="seg">
+              <button type="button" className="seg-btn" onClick={() => set({ terminal: undefined, shell: undefined, keepOpen: undefined })}>Program</button>
+              <button type="button" className="seg-btn on">Terminal command</button>
+            </span>
+          </Field>
+          <Field label="Command" hint="Typed exactly as you would in the terminal, e.g. npm run dev. ${NAME} reads from .env">
+            <textarea rows={3} value={action.command} spellCheck={false} onChange={(e) => set({ command: e.target.value })} />
+          </Field>
+          <Field label="Terminal" hint="PowerShell 7 (pwsh) must be installed to use it.">
+            <select value={action.shell ?? "powershell"} onChange={(e) => set({ shell: e.target.value === "powershell" ? undefined : (e.target.value as Shell) })}>
+              <option value="powershell">Windows PowerShell</option>
+              <option value="pwsh">PowerShell 7 (pwsh)</option>
+              <option value="cmd">Command Prompt (cmd)</option>
+            </select>
+          </Field>
+          <Field label="Working directory"><input value={action.cwd ?? ""} onChange={(e) => set({ cwd: e.target.value || undefined })} spellCheck={false} /></Field>
+          <label className="check"><input type="checkbox" checked={action.keepOpen !== false} onChange={(e) => set({ keepOpen: e.target.checked ? undefined : false })} /> Keep the window open when the command finishes</label>
+        </>
+      )}
+      {action.type === "run" && !action.terminal && (
+        <>
+          <Field label="Run as">
+            <span className="seg">
+              <button type="button" className="seg-btn on">Program</button>
+              <button type="button" className="seg-btn" onClick={() => set({ terminal: true, args: undefined, hidden: undefined })}>Terminal command</button>
+            </span>
+          </Field>
           <Field label="Program"><PathInput value={action.command} onChange={(command) => set({ command })} extensions={["exe", "bat", "cmd", "lnk"]} /></Field>
           <Field label="Arguments" hint="One per line">
             <textarea rows={3} value={(action.args ?? []).join("\n")} spellCheck={false}

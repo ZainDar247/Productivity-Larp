@@ -26,7 +26,12 @@ public sealed record OpenAction(string Path) : MenuAction;
 public sealed record RdpAction(string File, IReadOnlyList<string> Args) : MenuAction;
 
 /// <summary>Start any program.</summary>
-public sealed record RunAction(string Command, IReadOnlyList<string> Args, string? Cwd, bool Hidden) : MenuAction;
+/// <summary>
+/// Run a program, or (Terminal = true) run <see cref="Command"/> as a command line in a console window of the chosen
+/// <see cref="Shell"/> (powershell, pwsh or cmd), optionally leaving the window open afterwards.
+/// </summary>
+public sealed record RunAction(string Command, IReadOnlyList<string> Args, string? Cwd, bool Hidden,
+    bool Terminal = false, string Shell = "powershell", bool KeepOpen = true) : MenuAction;
 
 /// <summary>Open a URL in the default browser.</summary>
 public sealed record UrlAction(string Url) : MenuAction;
