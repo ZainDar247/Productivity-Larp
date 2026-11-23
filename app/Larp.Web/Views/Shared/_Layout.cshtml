@@ -1,0 +1,15 @@
+<!doctype html>
+<html lang="en" data-view="@ViewData["View"]">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>productivity.larp</title>
+    <link rel="stylesheet" href="~/ui/app.css" asp-append-version="true" />
+</head>
+<body>
+    <div id="root"></div>
+    @RenderBody()
+    <script>window.__LARP_TOKEN = @Json.Serialize((string?)ViewData["Token"]);</script>
+    <script type="module" src="~/ui/app.js" asp-append-version="true"></script>
+</body>
+</html>

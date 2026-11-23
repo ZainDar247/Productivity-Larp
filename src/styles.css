@@ -11,10 +11,12 @@ html, body, #root { margin: 0; height: 100%; }
 body { background: var(--bg); color: var(--text); font-size: 14px; }
 
 /* ---------- overlay ---------- */
-html[data-view="overlay"], html[data-view="overlay"] body { background: transparent; overflow: hidden; }
+html[data-view="overlay"], html[data-view="overlay"] body { background: #000; overflow: hidden; }
 html[data-view="overlay"][data-mock] body { background: linear-gradient(135deg, #3b4663, #1d2233); }
 .overlay { position: fixed; inset: 0; user-select: none; -webkit-user-select: none; cursor: default; }
-.overlay svg { display: block; }
+.overlay svg { display: block; position: absolute; inset: 0; }
+.backdrop, .dim { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+.backdrop { object-fit: fill; }
 .overlay-error, .overlay-warn { position: fixed; left: 50%; transform: translateX(-50%); padding: 8px 14px; border-radius: 8px; font-size: 13px; }
 .overlay-error { top: 20px; background: #3b1219; color: #ffb3b3; }
 .overlay-warn { bottom: 20px; background: #3b2c12; color: #ffd9a0; }

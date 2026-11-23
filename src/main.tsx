@@ -5,7 +5,8 @@ import { SettingsApp } from "./settings/SettingsApp";
 import { bridge } from "./lib/bridge";
 import "./styles.css";
 
-const view = new URLSearchParams(location.search).get("view") ?? "settings";
+// the MVC page sets data-view; ?view= is for the plain-browser dev mode
+const view = document.documentElement.dataset.view || new URLSearchParams(location.search).get("view") || "settings";
 document.documentElement.dataset.view = view;
 if (!bridge.native) document.documentElement.dataset.mock = "1";
 

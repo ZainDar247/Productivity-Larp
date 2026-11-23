@@ -9,20 +9,17 @@
     "build": "tsc --noEmit && vite build",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
-    "tauri": "tauri",
-    "app": "tauri dev",
-    "app:build": "tauri build"
+    "test:all": "vitest run && dotnet test app/Larp.sln",
+    "app": "npm run build && dotnet run --project app/Larp.App -c Release",
+    "app:build": "npm run build && dotnet publish app/Larp.App -c Release -o publish"
   },
   "dependencies": {
-    "@tauri-apps/api": "^2.12.5",
-    "@tauri-apps/plugin-dialog": "^2.8.4",
     "lucide-react": "^1.77.0",
     "react": "^19.3.1",
     "react-dom": "^19.3.1",
     "zod": "^4.6.7"
   },
   "devDependencies": {
-    "@tauri-apps/cli": "^2.12.6",
     "@types/react": "^19.3.0",
     "@types/react-dom": "^19.3.0",
     "@vitejs/plugin-react": "^6.3.0",

@@ -1,9 +1,12 @@
 # dependencies & build output
 node_modules/
 dist/
-target/
-src-tauri/gen/
+publish/
+bin/
+obj/
 *.tsbuildinfo
+# the React bundle is built into the app's wwwroot (npm run build)
+app/wwwroot/ui/
 
 # secrets — NEVER commit
 .env
@@ -19,5 +22,7 @@ src-tauri/gen/
 .DS_Store
 Thumbs.db
 *.log
+*.user
+.vs/
 .vscode/*
 !.vscode/extensions.json

@@ -17,6 +17,7 @@ export function Overlay() {
   const [st, setSt] = useState<MenuState>(initialState);
   const [openKey, setOpenKey] = useState(0);
   const [error, setError] = useState<string | null>(null);
+  const [shot, setShot] = useState<string | undefined>(undefined);
 
   // ---- config ----
   const load = useCallback(async () => {
@@ -96,6 +97,7 @@ export function Overlay() {
         cancelDwell();
         openedAt.current = Date.now();
         setGeom({ x: cx, y: cy, w: p.w, h: p.h });
+        setShot(p.shot);
         setSt(initialState());
         setError(null);
         setOpenKey((k) => k + 1);
@@ -116,6 +118,25 @@ export function Overlay() {
   useEffect(() => {
     if (cfg && st.path.length && !childrenAt(cfg.menu, st.path)) setSt(initialState());
   }, [cfg, st.path]);
+
+  // Tell the shell when the first frame (backdrop + ring) is really on screen, so the
+  // window is revealed only once there is something correct to show — no flash.
+  useEffect(() => {
+    if (!visible || openKey === 0 || !bridge.native) return;
+    let cancelled = false;
+    (async () => {
+      if (shot) {
+        await new Promise<void>((res) => {
+          const img = new Image();
+          img.onload = img.onerror = () => res();
+          img.src = bridge.assetUrl(shot);
+        });
+      }
+      await new Promise<void>((r) => requestAnimationFrame(() => requestAnimationFrame(() => r())));
+      if (!cancelled) bridge.overlayReady().catch(() => {});
+    })();
+    return () => { cancelled = true; };
+  }, [openKey]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // ---- pointer + keyboard ----
   useEffect(() => {
@@ -178,19 +199,13 @@ export function Overlay() {
         }
       }
     };
-    const onBlur = () => {
-      // safety net: if focus is lost the overlay must not stay on screen
-      if (bridge.native && latest.current.visible && Date.now() - openedAt.current > 400) close();
-    };
     window.addEventListener("pointermove", onMove);
     window.addEventListener("pointerdown", onDown);
     window.addEventListener("keydown", onKey);
-    window.addEventListener("blur", onBlur);
     return () => {
       window.removeEventListener("pointermove", onMove);
       window.removeEventListener("pointerdown", onDown);
       window.removeEventListener("keydown", onKey);
-      window.removeEventListener("blur", onBlur);
     };
   }, [choose, close]);
 
@@ -214,7 +229,9 @@ export function Overlay() {
   if (sub && sub.length > 18) sub = "…" + sub.slice(-17);
 
   return (
-    <div className="overlay" style={{ background: `rgba(0,0,0,${theme.dim})` }}>
+    <div className="overlay">
+      {shot && <img className="backdrop" src={bridge.assetUrl(shot)} alt="" draggable={false} />}
+      <div className="dim" style={{ background: `rgba(0,0,0,${theme.dim})` }} />
       <svg width={geom.w} height={geom.h} role="menu" aria-label="Radial menu">
         <g transform={`translate(${geom.x} ${geom.y})`}>
           <Ring

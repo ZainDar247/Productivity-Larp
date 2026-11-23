@@ -7,36 +7,55 @@ from a built-in Settings window.
 
 ## How it behaves
 
-- **Trigger:** keyboard shortcut, or a mouse button — each in *press* or *hold* mode.
+- **Trigger:** keyboard shortcut, or a mouse button — each in *press* or *hold* mode. The trigger is swallowed,
+  so the app underneath never receives your `Ctrl+Shift+Z` (or your middle-click).
 - **Hover = select.** A slice fires after a short, configurable dwell (default 150 ms). Clicking a slice fires it instantly.
 - **The pointer can't leave the menu:** selection depends on the *angle* from the centre, so every direction maps to a slice.
 - **Layers:** a folder slice opens the next ring and re-centres the cursor. A **Back** slice (or `Backspace`) goes up.
 - **Close:** click inside the centre circle, press `Esc`, or let an action finish — the menu closes itself.
 - **Keyboard:** `←`/`↑` `→`/`↓`/`Tab` move around the ring, `Enter` selects, `Backspace` goes back.
-- **No limits:** unlimited items and depth. A crowded ring paginates itself with a “More” slice.
+- **No limits:** unlimited items and depth. A crowded ring paginates itself with a "More" slice.
 - **Per-slice look:** icon, emoji, image, text, or icon/image + text; optional colour per slice.
+- **Backdrop:** the menu freezes a screenshot of your screen and draws the ring over it, so it looks transparent on
+  every Windows version and clicks can't leak through to other apps.
 
 ## Stack
 
-| Layer | Choice | Why |
-|---|---|---|
-| Shell / native | **Tauri 2 (Rust)** | Much lighter than Electron (it reuses the WebView2 already in Windows instead of bundling Chromium) — not yet measured here |
-| UI | **React 19 + TypeScript + Vite** | ring is plain SVG, no UI framework |
-| Core logic | `crates/larp-core` (Rust) | config model, `${ENV}` expansion, action runner — GUI-free and unit-tested |
-| Config | JSON, validated twice (Zod in the UI, serde in Rust) | a bad config shows a message instead of crashing |
+| Layer | Choice |
+|---|---|
+| Backend | **ASP.NET Core MVC** (.NET 10, C#) — controllers = the JSON API + live event stream; Razor views host the UI |
+| Windows shell | **C# WinForms** + **WebView2** — tray icon, low-level keyboard/mouse hooks, the overlay and settings windows |
+| Frontend | **React 19 + TypeScript + Vite** — the ring is plain SVG |
+| Core logic | `Larp.Core` — config model, `${ENV}` expansion, action runner, shortcut parser, trigger state machine (no Windows APIs) |
+
+```
+React UI (WebView2) ──HTTP + SSE──▶ ASP.NET Core MVC (Kestrel, 127.0.0.1) ──▶ Larp.Core
+                                              ▲
+                          Windows shell (hooks, windows, tray) implements IDesktop
+```
+
+### Security of the local server
+
+The MVC backend can launch programs, so it is locked down: it listens on **127.0.0.1 only**, on a **random port**;
+every request except the static bundle needs a **secret token generated at each launch** (only the app's own
+windows know it); a **Host-header check** blocks DNS-rebinding from web pages. The UI never sends commands — it only
+says *which menu item id* was chosen, and the server looks the action up in its own copy of the config.
 
 ## Getting started (Windows)
 
-Prerequisites: [Node 20+](https://nodejs.org), [Rust](https://rustup.rs) (with the MSVC build tools), WebView2 (already on Windows 10/11).
+Prerequisites: [.NET 10 SDK](https://dotnet.microsoft.com/download), [Node 20+](https://nodejs.org), and the
+WebView2 Runtime (already part of Windows 10/11).
 
 ```powershell
 npm install
 copy .env.example .env      # then edit it — .env is git-ignored
-npm run app                 # = tauri dev   (first build takes a few minutes)
-npm run app:build           # produces an installer in src-tauri/target/release/bundle
+npm run app                 # builds the UI, then runs the app (tray icon appears)
+npm run app:build           # publishes to ./publish
 ```
 
 On first launch a starter menu is written and the Settings window opens. The app then lives in the tray.
+If the foreground window is an *elevated* (run-as-administrator) program, Windows doesn't let a normal app's hooks
+see its keys — run productivity.larp as administrator if you need the trigger to work over those.
 
 ### Your files
 
@@ -60,26 +79,29 @@ aborts the action with a clear error instead of launching something half-formed.
 ```
 
 A node with `children` is a sub-menu; a node with an `action` runs it. See [`config.example.json`](config.example.json).
-The webview never sends actions to the backend — it only reports *which node id* was chosen, and the backend looks
-the action up in its own copy of the config.
 
 ## Develop & test
 
 ```bash
-npm run dev          # UI in a browser at http://localhost:1420/?view=overlay  (mock backend)
-npm test             # vitest: ring geometry, menu state machine, tree editing
-cargo test -p larp-core
-npm run typecheck
+npm test                         # vitest: ring geometry, menu state machine, tree editing (26)
+dotnet test app/Larp.sln         # config, env, actions, shortcuts, trigger machine, store + the MVC API & security (70)
+npm run dev                      # UI alone in a browser, mock backend: http://localhost:1420/?view=overlay
+npm run build && dotnet run --project app/Larp.DevHost   # REAL MVC backend + fake desktop, on any OS
 ```
 
-`?view=overlay` and `?view=settings` select which window the bundle renders; in a plain browser a mock backend
-stands in for Tauri so the whole UI can be exercised without Windows.
+`Larp.DevHost` runs the actual MVC backend with a fake desktop, so the full stack (React → HTTP/SSE → controllers →
+core) can be developed and tested on Linux/macOS. Only the Windows shell (hooks, windows, tray) needs Windows to run;
+it compiles anywhere (`EnableWindowsTargeting`).
 
 ## Layout
 
 ```
-src/            React UI  (overlay/ = the ring, settings/ = the editor, lib/ = pure logic)
-crates/larp-core/   config, env expansion, actions (Rust, no GUI deps)
-src-tauri/      Tauri glue: windows, tray, hotkey + mouse trigger, commands
+src/                    React UI  (overlay/ = the ring, settings/ = the editor, lib/ = pure logic)
+app/Larp.Core/          config, env expansion, actions, shortcut + trigger logic   (net10.0)
+app/Larp.Web/           ASP.NET Core MVC: controllers, Razor views, SSE, security   (net10.0)
+app/Larp.App/           Windows shell: hooks, overlay, settings, tray               (net10.0-windows)
+app/Larp.DevHost/       MVC backend + fake desktop for dev/tests on any OS
+app/Larp.Tests/         xUnit
+assets/                 app icon
 config.example.json  .env.example
 ```
