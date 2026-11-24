@@ -105,17 +105,3 @@ app/Larp.Tests/         xUnit
 assets/                 app icon
 config.example.json  .env.example
 ```
-
-## Install (no cloning needed)
-
-1. Open the [latest release](https://github.com/ZainDar247/Productivity-Larp/releases/latest) and download `productivity.larp-setup.exe`.
-2. Run it and answer the prompts (SmartScreen may warn about an unsigned file: choose More info, then Run anyway).
-3. Start it from the Start Menu or Desktop shortcut. It opens Settings, or just brings Settings up if it is already running. Quit it from the tray icon.
-
-Uninstall from Windows Settings > Apps. Nothing else needs to be installed.
-
-## Building the installer yourself
-
-`npm run installer` builds `dist/productivity.larp-setup.exe`: one file that installs the self-contained app for the current user (no admin rights, no .NET needed), adds Start Menu and Desktop shortcuts and an Apps and features entry, and can start with Windows. Switches: `/S` silent, `/D=path`, `--no-launch`, `--no-desktop`, `--autostart`, `--uninstall`.
-
-To publish a new version, push a tag (`git tag v0.1.0 && git push origin v0.1.0`): GitHub Actions builds the installer and attaches it to a release.

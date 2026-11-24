@@ -11,7 +11,6 @@
     "test": "vitest run",
     "test:all": "vitest run && dotnet test app/Larp.sln",
     "app": "npm run build && node scripts/launch.mjs",
-    "installer": "node scripts/build-installer.mjs",
     "app:build": "npm run build && dotnet publish app/Larp.App -c Release -o publish"
   },
   "dependencies": {
