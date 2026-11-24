@@ -125,3 +125,4 @@ body.dragging-row, body.dragging-row * { cursor: grabbing !important; user-selec
 .tree-row.drop-before::after, .tree-row.drop-after::after { content: ""; position: absolute; left: 6px; right: 6px; height: 2px; background: var(--accent); border-radius: 2px; pointer-events: none; }
 .tree-row.drop-before::after { top: -1px; } .tree-row.drop-after::after { bottom: -1px; }
 .tree-row.drop-into { background: color-mix(in srgb, var(--accent) 22%, transparent); outline: 2px solid var(--accent); outline-offset: -2px; }
+.row.between { justify-content: space-between; } .trigger-card { margin-bottom: 12px; } .trigger-card h4 { margin: 0 0 8px; }

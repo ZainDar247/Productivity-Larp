@@ -50,8 +50,8 @@ sealed class FakeDesktop : IDesktop
     public System.Collections.Concurrent.ConcurrentQueue<string> Log { get; } = new();
     public Task ApplyTriggerAsync(Config config)
     {
-        if (config.Trigger is KeyboardTrigger k) Shortcut.Parse(k.Shortcut); // same validation the Windows shell does
-        Log.Enqueue($"trigger:{config.Trigger.GetType().Name}");
+        foreach (var t in config.Triggers) if (t is KeyboardTrigger k) Shortcut.Parse(k.Shortcut); // same validation the Windows shell does
+        Log.Enqueue($"trigger:{string.Join("+", config.Triggers.Select(t => t.GetType().Name))}");
         return Task.CompletedTask;
     }
     public Task RunAsync(Prepared action) { Log.Enqueue("run:" + System.Text.Json.JsonSerializer.Serialize(action, action.GetType())); return Task.CompletedTask; }

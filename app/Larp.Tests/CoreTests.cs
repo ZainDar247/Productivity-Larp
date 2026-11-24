@@ -175,6 +175,35 @@ public class ShortcutTests
     public void Rejects_unusable(string text) => Assert.Throws<ConfigException>(() => Shortcut.Parse(text));
 }
 
+public class MultiTriggerTests
+{
+    private const string Menu = "\"menu\": [{\"id\":\"a\",\"action\":{\"type\":\"settings\"}}]";
+
+    [Fact]
+    public void Trigger_array_keeps_keyboard_and_mouse_together()
+    {
+        var c = ConfigParser.Parse("{\"trigger\": [{\"type\":\"keyboard\",\"shortcut\":\"Ctrl+Shift+Z\"},{\"type\":\"mouse\",\"button\":\"middle\",\"mode\":\"hold\"}]," + Menu + "}");
+        Assert.Equal(2, c.Triggers.Count);
+        Assert.IsType<KeyboardTrigger>(c.Triggers[0]);
+        Assert.Equal(new MouseTrigger(MouseButton.Middle, TriggerMode.Hold, 350), c.Triggers[1]);
+        Assert.Same(c.Triggers[0], c.Trigger);
+    }
+
+    [Fact]
+    public void Single_trigger_object_still_works()
+    {
+        var c = ConfigParser.Parse("{\"trigger\": {\"type\":\"mouse\",\"button\":\"back\"}," + Menu + "}");
+        Assert.Single(c.Triggers);
+    }
+
+    [Fact]
+    public void Empty_or_bad_trigger_array_is_rejected_with_the_entry_path()
+    {
+        Assert.Contains("at least one", Assert.Throws<ConfigException>(() => ConfigParser.Parse("{\"trigger\": []," + Menu + "}")).Message);
+        Assert.Contains("trigger[1].button", Assert.Throws<ConfigException>(() => ConfigParser.Parse("{\"trigger\": [{\"type\":\"keyboard\",\"shortcut\":\"F1\"},{\"type\":\"mouse\",\"button\":\"nope\"}]," + Menu + "}")).Message);
+    }
+}
+
 public class TriggerMachineTests
 {
     [Fact] public void Press_mode_toggles_once_per_physical_press_and_ignores_auto_repeat()

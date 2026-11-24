@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Save, Undo2 } from "lucide-react";
 import { bridge } from "../lib/bridge";
-import { parseConfig, resolveTheme, type Config, type NodeT } from "../lib/types";
+import { parseConfig, resolveTheme, triggerSummary, type Config, type NodeT } from "../lib/types";
 import { MenuEditor } from "./MenuEditor";
 import { AdvancedTab, AppearanceTab, BehaviorTab, TriggerTab } from "./Tabs";
 
@@ -74,7 +74,7 @@ export function SettingsApp() {
         <button className="btn primary" disabled={!dirty || !cfg} onClick={save}><Save size={14} /> Save</button>
       </header>
 
-      {info.firstRun && <div className="banner info">Welcome! A starter menu was created. Edit it below, then press <b>Save</b>. Your trigger is <b>{cfg?.trigger.type === "keyboard" ? cfg.trigger.shortcut : "a mouse button"}</b>.</div>}
+      {info.firstRun && <div className="banner info">Welcome! A starter menu was created. Edit it below, then press <b>Save</b>. Your trigger is <b>{cfg ? triggerSummary(cfg) : ""}</b>.</div>}
       {info.loadError && cfg && <div className="banner err">Config problem: {info.loadError}</div>}
 
       <main className="content">

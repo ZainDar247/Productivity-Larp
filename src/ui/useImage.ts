@@ -10,8 +10,10 @@ export function useImage(src?: string): string | undefined {
   useEffect(() => {
     if (!src) return setUrl(undefined);
     if (direct.test(src)) return setUrl(src);
+    // stale-while-revalidate: show what we have at once, but always re-check the file, so a deleted or
+    // replaced image never lingers from an old in-memory copy
     const hit = cache.get(src);
-    if (hit) return setUrl(hit);
+    setUrl(hit);
     let live = true;
     bridge
       .loadImage(src)
@@ -19,7 +21,10 @@ export function useImage(src?: string): string | undefined {
         cache.set(src, u);
         if (live) setUrl(u);
       })
-      .catch(() => live && setUrl(undefined));
+      .catch(() => {
+        cache.delete(src);
+        if (live) setUrl(undefined);
+      });
     return () => {
       live = false;
     };

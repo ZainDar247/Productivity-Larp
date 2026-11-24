@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { PRESETS, getPreset, toHex } from "./themePresets";
-import { buildTheme, parseConfig, resolveTheme } from "./types";
+import { buildTheme, packTriggers, parseConfig, resolveTheme, triggersOf } from "./types";
 
 describe("theme presets", () => {
   it("ships the nine PSW themes", () => {
@@ -44,5 +44,17 @@ describe("theme presets", () => {
     expect(toHex("rgb(79 140 255)")).toBe("#4f8cff");
     expect(toHex("rgb(79 140 255 / 0.9)")).toBe("#4f8cff");
     expect(toHex("#abcdef")).toBe("#abcdef");
+  });
+});
+
+describe("multiple triggers", () => {
+  it("accepts one trigger or a list and round-trips the list", () => {
+    const one = parseConfig(JSON.stringify({ trigger: { type: "mouse", button: "middle" }, menu: [] }));
+    const many = parseConfig(JSON.stringify({ trigger: [{ type: "keyboard", shortcut: "F1" }, { type: "mouse", button: "back" }], menu: [] }));
+    expect(one.ok && triggersOf(one.config)).toHaveLength(1);
+    expect(many.ok && triggersOf(many.config)).toHaveLength(2);
+    expect(packTriggers([{ type: "keyboard", shortcut: "F1" }])).toEqual({ type: "keyboard", shortcut: "F1" });
+    expect(Array.isArray(packTriggers([{ type: "keyboard", shortcut: "F1" }, { type: "mouse", button: "back" }]))).toBe(true);
+    expect(parseConfig(JSON.stringify({ trigger: [], menu: [] })).ok).toBe(false);
   });
 });

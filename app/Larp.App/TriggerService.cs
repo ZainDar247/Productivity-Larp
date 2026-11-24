@@ -15,13 +15,19 @@ internal sealed class TriggerService : IDisposable
     private readonly Action _toggle;
     private readonly Action _open;
 
+    /// <summary>One configured trigger with its own press/hold state, so several can be active at once.</summary>
+    private sealed class Binding(Shortcut? shortcut, MouseButton? button, TriggerMachine machine, int holdMs)
+    {
+        public readonly Shortcut? Shortcut = shortcut;
+        public readonly MouseButton? Button = button;
+        public readonly TriggerMachine Machine = machine;
+        public readonly int HoldMs = holdMs;
+        public bool SwallowedDown;
+    }
+
     private nint _kbHook, _mouseHook;
     private readonly Native.HookProc _kbProc, _mouseProc; // fields keep the delegates alive
-    private Shortcut? _shortcut;
-    private MouseButton? _button;
-    private TriggerMachine _machine = new(TriggerMode.Press);
-    private int _holdMs = 350;
-    private bool _swallowedDown;
+    private Binding[] _bindings = [];
 
     public TriggerService(Control ui, Func<bool> menuVisible, Action toggle, Action open)
     {
@@ -30,26 +36,24 @@ internal sealed class TriggerService : IDisposable
         _mouseProc = MouseProc;
     }
 
-    /// <summary>(Re)configure. Parses first, so an invalid shortcut leaves the current trigger untouched. UI thread only.</summary>
+    /// <summary>(Re)configure. Parses first, so an invalid shortcut leaves the current triggers untouched. UI thread only.</summary>
     public void Apply(Config cfg)
     {
-        Shortcut? sc = null;
-        MouseButton? btn = null;
-        switch (cfg.Trigger)
+        var next = new List<Binding>();
+        foreach (var t in cfg.Triggers)
         {
-            case KeyboardTrigger k: sc = Shortcut.Parse(k.Shortcut); break;
-            case MouseTrigger m: btn = m.Button; break;
+            switch (t)
+            {
+                case KeyboardTrigger k: next.Add(new Binding(Shortcut.Parse(k.Shortcut), null, new TriggerMachine(k.Mode), k.HoldMs)); break;
+                case MouseTrigger m: next.Add(new Binding(null, m.Button, new TriggerMachine(m.Mode), m.HoldMs)); break;
+            }
         }
 
         Uninstall();
-        _shortcut = sc;
-        _button = btn;
-        _machine = new TriggerMachine(cfg.Trigger.Mode);
-        _holdMs = cfg.Trigger.HoldMs;
-        _swallowedDown = false;
+        _bindings = [.. next];
 
-        if (sc is not null) _kbHook = Install(Native.WH_KEYBOARD_LL, _kbProc, "keyboard");
-        if (btn is not null) _mouseHook = Install(Native.WH_MOUSE_LL, _mouseProc, "mouse");
+        if (_bindings.Any(x => x.Shortcut is not null)) _kbHook = Install(Native.WH_KEYBOARD_LL, _kbProc, "keyboard");
+        if (_bindings.Any(x => x.Button is not null)) _mouseHook = Install(Native.WH_MOUSE_LL, _mouseProc, "mouse");
     }
 
     private static nint Install(int id, Native.HookProc proc, string what)
@@ -69,26 +73,29 @@ internal sealed class TriggerService : IDisposable
     {
         try
         {
-            if (code >= 0 && _shortcut is { } sc)
+            if (code >= 0)
             {
                 var k = System.Runtime.InteropServices.Marshal.PtrToStructure<Native.KBDLLHOOKSTRUCT>(lParam);
-                if ((k.flags & Native.LLKHF_INJECTED) == 0 && k.vkCode == sc.Vk)
+                if ((k.flags & Native.LLKHF_INJECTED) == 0)
                 {
                     var msg = (int)wParam;
                     var down = msg is Native.WM_KEYDOWN or Native.WM_SYSKEYDOWN;
                     var up = msg is Native.WM_KEYUP or Native.WM_SYSKEYUP;
-
-                    if (down && (_swallowedDown || ModifiersMatch(sc)))
+                    foreach (var b in _bindings)
                     {
-                        _swallowedDown = true;
-                        Dispatch(_machine.Down()); // auto-repeat returns None
-                        return 1;                  // swallow: the app underneath never sees Ctrl+Shift+Z
-                    }
-                    if (up && _swallowedDown)
-                    {
-                        _swallowedDown = false;
-                        Dispatch(_machine.Up());
-                        return 1;
+                        if (b.Shortcut is not { } sc || k.vkCode != sc.Vk) continue;
+                        if (down && (b.SwallowedDown || ModifiersMatch(sc)))
+                        {
+                            b.SwallowedDown = true;
+                            Dispatch(b, b.Machine.Down()); // auto-repeat returns None
+                            return 1;                      // swallow: the app underneath never sees Ctrl+Shift+Z
+                        }
+                        if (up && b.SwallowedDown)
+                        {
+                            b.SwallowedDown = false;
+                            Dispatch(b, b.Machine.Up());
+                            return 1;
+                        }
                     }
                 }
             }
@@ -108,20 +115,21 @@ internal sealed class TriggerService : IDisposable
     {
         try
         {
-            if (code >= 0 && _button is { } want)
+            var msg = (int)wParam;
+            // cheap early-out: this hook sees every mouse move
+            if (code >= 0 && msg is >= Native.WM_LBUTTONDOWN and <= Native.WM_XBUTTONUP && msg != 0x200)
             {
-                var msg = (int)wParam;
-                // cheap early-out: this hook sees every mouse move
-                if (msg is >= Native.WM_LBUTTONDOWN and <= Native.WM_XBUTTONUP && msg != 0x200)
+                var m = System.Runtime.InteropServices.Marshal.PtrToStructure<Native.MSLLHOOKSTRUCT>(lParam);
+                if ((m.flags & Native.LLMHF_INJECTED) == 0 && Classify(msg, m.mouseData) is { } hit)
                 {
-                    var m = System.Runtime.InteropServices.Marshal.PtrToStructure<Native.MSLLHOOKSTRUCT>(lParam);
-                    if ((m.flags & Native.LLMHF_INJECTED) == 0 && Classify(msg, m.mouseData) is { } hit && hit.Button == want)
+                    foreach (var b in _bindings)
                     {
+                        if (b.Button is not { } want || hit.Button != want) continue;
                         // While the menu is open, left/right clicks belong to the menu (choose a slice, close).
-                        if (_menuVisible() && want is MouseButton.Left or MouseButton.Right) return Native.CallNextHookEx(_mouseHook, code, wParam, lParam);
+                        if (_menuVisible() && want is MouseButton.Left or MouseButton.Right) continue;
 
-                        if (hit.Down) { _swallowedDown = true; Dispatch(_machine.Down()); return 1; }
-                        if (_swallowedDown) { _swallowedDown = false; Dispatch(_machine.Up()); return 1; }
+                        if (hit.Down) { b.SwallowedDown = true; Dispatch(b, b.Machine.Down()); return 1; }
+                        if (b.SwallowedDown) { b.SwallowedDown = false; Dispatch(b, b.Machine.Up()); return 1; }
                     }
                 }
             }
@@ -148,7 +156,7 @@ internal sealed class TriggerService : IDisposable
     }
 
     // ---------------- outcome ----------------
-    private void Dispatch(TriggerOutcome outcome)
+    private void Dispatch(Binding b, TriggerOutcome outcome)
     {
         switch (outcome)
         {
@@ -156,11 +164,10 @@ internal sealed class TriggerService : IDisposable
                 _ui.BeginInvoke(_toggle);
                 break;
             case TriggerOutcome.StartHoldTimer:
-                var machine = _machine;
-                var generation = machine.Generation;
-                _ = Task.Delay(_holdMs).ContinueWith(_ => _ui.BeginInvoke(() =>
+                var generation = b.Machine.Generation;
+                _ = Task.Delay(b.HoldMs).ContinueWith(_ => _ui.BeginInvoke(() =>
                 {
-                    if (ReferenceEquals(machine, _machine) && machine.HoldElapsed(generation, _menuVisible()) == TriggerOutcome.Open)
+                    if (_bindings.Contains(b) && b.Machine.HoldElapsed(generation, _menuVisible()) == TriggerOutcome.Open)
                         _open();
                 }));
                 break;

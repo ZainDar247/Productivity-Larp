@@ -61,7 +61,12 @@ public static class ActionRunner
         {
             case OpenPrepared o:
                 if (string.IsNullOrWhiteSpace(o.Target)) throw new LarpException("nothing to open (empty path)");
-                try { Process.Start(new ProcessStartInfo(o.Target) { UseShellExecute = true })?.Dispose(); }
+                try
+                {
+                    // an .exe is started detached (no console, own process group) so closing a terminal never kills it
+                    if (DetachedLauncher.IsExecutable(o.Target)) DetachedLauncher.Start(o.Target);
+                    else Process.Start(new ProcessStartInfo(o.Target) { UseShellExecute = true })?.Dispose();
+                }
                 catch (Exception e) { throw new LarpException($"could not open `{o.Target}`: {e.Message}"); }
                 break;
 

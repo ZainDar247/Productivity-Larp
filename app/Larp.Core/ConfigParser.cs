@@ -17,7 +17,7 @@ public static class ConfigParser
             if (root.ValueKind != JsonValueKind.Object) throw new ConfigException("the top level must be an object");
 
             var version = OptInt(root, "version", "config") ?? 1;
-            var trigger = ParseTrigger(Req(root, "trigger", "config"));
+            var triggers = ParseTriggers(Req(root, "trigger", "config"));
             var behavior = root.TryGetProperty("behavior", out var b) && b.ValueKind == JsonValueKind.Object
                 ? new Behavior(
                     OptInt(b, "dwellMs", "behavior") ?? Behavior.Default.DwellMs,
@@ -28,41 +28,52 @@ public static class ConfigParser
             if (menuEl.ValueKind != JsonValueKind.Array) throw new ConfigException("menu must be an array");
             var seen = new HashSet<string>(StringComparer.Ordinal);
             var menu = ParseNodes(menuEl, "menu", seen);
-            return new Config(version, trigger, behavior, menu);
+            return new Config(version, triggers, behavior, menu);
         }
     }
 
-    private static Trigger ParseTrigger(JsonElement t)
+    /// <summary>`trigger` is one trigger object, or an array of them (e.g. a keyboard shortcut AND a mouse button).</summary>
+    private static List<Trigger> ParseTriggers(JsonElement t)
     {
-        var type = ReqStr(t, "type", "trigger");
-        var mode = OptStr(t, "mode", "trigger") switch
+        if (t.ValueKind != JsonValueKind.Array) return [ParseTrigger(t, "trigger")];
+        if (t.GetArrayLength() == 0) throw new ConfigException("trigger must have at least one entry");
+        var list = new List<Trigger>();
+        var i = 0;
+        foreach (var e in t.EnumerateArray()) list.Add(ParseTrigger(e, $"trigger[{i++}]"));
+        return list;
+    }
+
+    private static Trigger ParseTrigger(JsonElement t, string path)
+    {
+        var type = ReqStr(t, "type", path);
+        var mode = OptStr(t, "mode", path) switch
         {
             null or "press" => TriggerMode.Press,
             "hold" => TriggerMode.Hold,
-            var other => throw new ConfigException($"trigger.mode `{other}` must be press or hold"),
+            var other => throw new ConfigException($"{path}.mode `{other}` must be press or hold"),
         };
-        var hold = OptInt(t, "holdMs", "trigger") ?? 350;
-        if (hold < 0) throw new ConfigException("trigger.holdMs must not be negative");
+        var hold = OptInt(t, "holdMs", path) ?? 350;
+        if (hold < 0) throw new ConfigException(path + ".holdMs must not be negative");
 
         switch (type)
         {
             case "keyboard":
-                var shortcut = ReqStr(t, "shortcut", "trigger");
-                if (string.IsNullOrWhiteSpace(shortcut)) throw new ConfigException("trigger.shortcut is empty");
+                var shortcut = ReqStr(t, "shortcut", path);
+                if (string.IsNullOrWhiteSpace(shortcut)) throw new ConfigException(path + ".shortcut is empty");
                 return new KeyboardTrigger(shortcut, mode, hold);
             case "mouse":
-                var button = ReqStr(t, "button", "trigger").ToLowerInvariant() switch
+                var button = ReqStr(t, "button", path).ToLowerInvariant() switch
                 {
                     "left" => MouseButton.Left,
                     "right" => MouseButton.Right,
                     "middle" => MouseButton.Middle,
                     "back" => MouseButton.Back,
                     "forward" => MouseButton.Forward,
-                    var other => throw new ConfigException($"trigger.button `{other}` is not left/right/middle/back/forward"),
+                    var other => throw new ConfigException($"{path}.button `{other}` is not left/right/middle/back/forward"),
                 };
                 return new MouseTrigger(button, mode, hold);
             default:
-                throw new ConfigException($"trigger.type `{type}` must be keyboard or mouse");
+                throw new ConfigException($"{path}.type `{type}` must be keyboard or mouse");
         }
     }
 

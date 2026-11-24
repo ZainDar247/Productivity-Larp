@@ -87,7 +87,8 @@ export type Trigger =
 
 export interface Config {
   version: number;
-  trigger: Trigger;
+  /** One trigger, or several (any of them opens the menu — e.g. a shortcut AND a mouse button). */
+  trigger: Trigger | Trigger[];
   theme?: Partial<ThemeConfig>;
   behavior?: Partial<Behavior>;
   menu: NodeT[];
@@ -123,6 +124,13 @@ export function buildTheme(t: Partial<ThemeConfig> = {}): Theme {
     animation: t.animation ?? DEFAULT_LAYOUT.animation,
   };
 }
+
+export const triggersOf = (c: Pick<Config, "trigger">): Trigger[] => (Array.isArray(c.trigger) ? c.trigger : [c.trigger]);
+/** One trigger is stored as a plain object (the original format); several as an array. */
+export const packTriggers = (list: Trigger[]): Trigger | Trigger[] => (list.length === 1 ? list[0] : list);
+
+export const triggerSummary = (c: Pick<Config, "trigger">): string =>
+  triggersOf(c).map((t) => (t.type === "keyboard" ? t.shortcut : `the ${t.button} mouse button`)).join(" or ");
 
 export const DEFAULT_THEME: Theme = buildTheme();
 export const DEFAULT_BEHAVIOR: Behavior = { dwellMs: 150, warpCursor: true, activation: "hover" };
@@ -178,7 +186,7 @@ const TriggerSchema = z.discriminatedUnion("type", [
 
 export const ConfigSchema: z.ZodType<Config> = z.looseObject({
   version: z.number().default(1),
-  trigger: TriggerSchema,
+  trigger: z.union([TriggerSchema, z.array(TriggerSchema).min(1)]),
   theme: z.looseObject({}).optional(),
   behavior: z.looseObject({}).optional(),
   menu: z.array(NodeSchema),

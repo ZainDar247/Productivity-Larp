@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { bridge } from "../lib/bridge";
-import { DEFAULT_BEHAVIOR, DEFAULT_LAYOUT, parseConfig, resolveBehavior, resolveTheme, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
+import { DEFAULT_BEHAVIOR, DEFAULT_LAYOUT, parseConfig, resolveBehavior, resolveTheme, triggersOf, packTriggers, type Config, type MouseButton, type Theme, type ThemeConfig, type Trigger } from "../lib/types";
 import { PRESETS, toHex } from "../lib/themePresets";
 import { RingPreview } from "./RingPreview";
 import { ColorInput, Field, Slider } from "./widgets";
@@ -16,11 +16,8 @@ function keyName(e: KeyboardEvent): string | null {
   return e.code || e.key;
 }
 
-export function TriggerTab({ cfg, setCfg }: P) {
-  const t = cfg.trigger;
+function TriggerCard({ t, onChange, onRemove, canRemove }: { t: Trigger; onChange: (t: Trigger) => void; onRemove: () => void; canRemove: boolean }) {
   const [rec, setRec] = useState(false);
-  const set = (nt: Trigger) => setCfg({ ...cfg, trigger: nt });
-
   useEffect(() => {
     if (!rec) return;
     const h = (e: KeyboardEvent) => {
@@ -30,35 +27,29 @@ export function TriggerTab({ cfg, setCfg }: P) {
       const k = keyName(e);
       if (!k) return;
       const parts = [e.ctrlKey && "Ctrl", e.shiftKey && "Shift", e.altKey && "Alt", e.metaKey && "Super"].filter(Boolean) as string[];
-      if (t.type === "keyboard") set({ ...t, shortcut: [...parts, k].join("+") });
+      if (t.type === "keyboard") onChange({ ...t, shortcut: [...parts, k].join("+") });
       setRec(false);
     };
     window.addEventListener("keydown", h, true);
     return () => window.removeEventListener("keydown", h, true);
   });
-
   const hold = t.mode === "hold";
   return (
-    <div className="form wide">
-      <Field label="Open the menu with">
-        <span className="seg">
-          <button type="button" className={"seg-btn" + (t.type === "keyboard" ? " on" : "")}
-            onClick={() => t.type !== "keyboard" && set({ type: "keyboard", shortcut: "Ctrl+Shift+Z", mode: t.mode, holdMs: t.holdMs })}>Keyboard shortcut</button>
-          <button type="button" className={"seg-btn" + (t.type === "mouse" ? " on" : "")}
-            onClick={() => t.type !== "mouse" && set({ type: "mouse", button: "middle", mode: t.mode, holdMs: t.holdMs })}>Mouse button</button>
-        </span>
-      </Field>
-
+    <section className="pane trigger-card">
+      <div className="row between">
+        <h4>{t.type === "keyboard" ? "Keyboard shortcut" : "Mouse button"}</h4>
+        {canRemove && <button type="button" className="btn" onClick={onRemove}>Remove</button>}
+      </div>
       {t.type === "keyboard" ? (
         <Field label="Shortcut" hint="Press Record, then the key combination. Note: Ctrl+Shift+Z is “Redo” in many apps — this shortcut will be taken away from them while the app runs.">
           <span className="row">
-            <input value={rec ? "Press the keys… (Esc to cancel)" : t.shortcut} onChange={(e) => set({ ...t, shortcut: e.target.value })} spellCheck={false} />
+            <input value={rec ? "Press the keys… (Esc to cancel)" : t.shortcut} onChange={(e) => onChange({ ...t, shortcut: e.target.value })} spellCheck={false} />
             <button type="button" className={"btn" + (rec ? " primary" : "")} onClick={() => setRec(!rec)}>{rec ? "Cancel" : "Record"}</button>
           </span>
         </Field>
       ) : (
         <Field label="Button" hint={t.button === "left" || t.button === "right" ? "⚠ The click still reaches the app underneath, and left/right clicks are used constantly. Middle or side buttons work best." : "The click still reaches the app underneath."}>
-          <select value={t.button} onChange={(e) => set({ ...t, button: e.target.value as MouseButton })}>
+          <select value={t.button} onChange={(e) => onChange({ ...t, button: e.target.value as MouseButton })}>
             <option value="middle">Middle (wheel click)</option>
             <option value="back">Side button — back</option>
             <option value="forward">Side button — forward</option>
@@ -67,17 +58,35 @@ export function TriggerTab({ cfg, setCfg }: P) {
           </select>
         </Field>
       )}
-
       <Field label="Behaviour">
-        <select value={t.mode ?? "press"} onChange={(e) => set({ ...t, mode: e.target.value as "press" | "hold" })}>
+        <select value={t.mode ?? "press"} onChange={(e) => onChange({ ...t, mode: e.target.value as "press" | "hold" })}>
           <option value="press">Press — open immediately (press again to close)</option>
           <option value="hold">Hold — open after holding for a moment</option>
         </select>
       </Field>
-      {hold && (
-        <Field label="Hold time"><Slider value={t.holdMs ?? 350} min={100} max={1500} step={50} unit=" ms" onChange={(holdMs) => set({ ...t, holdMs })} /></Field>
-      )}
-      <p className="muted small">The trigger is registered when you press <b>Save</b>. If the combination is already taken by another app you will see an error and the old one stays active.</p>
+      {hold && <Field label="Hold time"><Slider value={t.holdMs ?? 350} min={100} max={1500} step={50} unit=" ms" onChange={(holdMs) => onChange({ ...t, holdMs })} /></Field>}
+    </section>
+  );
+}
+
+export function TriggerTab({ cfg, setCfg }: P) {
+  const list = triggersOf(cfg);
+  const save = (next: Trigger[]) => setCfg({ ...cfg, trigger: packTriggers(next) });
+  const hasKb = list.some((t) => t.type === "keyboard");
+  const hasMouse = list.some((t) => t.type === "mouse");
+  return (
+    <div className="form wide">
+      <p className="muted">Any of these opens the menu — keep a keyboard shortcut and a mouse button active at the same time.</p>
+      {list.map((t, i) => (
+        <TriggerCard key={i} t={t} canRemove={list.length > 1}
+          onChange={(nt) => save(list.map((x, j) => (j === i ? nt : x)))}
+          onRemove={() => save(list.filter((_, j) => j !== i))} />
+      ))}
+      <span className="row">
+        <button type="button" className="btn" onClick={() => save([...list, { type: "keyboard", shortcut: hasKb ? "Ctrl+Alt+Z" : "Ctrl+Shift+Z", mode: "press" }])}>+ Keyboard shortcut</button>
+        <button type="button" className="btn" onClick={() => save([...list, { type: "mouse", button: hasMouse ? "forward" : "middle", mode: "press" }])}>+ Mouse button</button>
+      </span>
+      <p className="muted small">Triggers are registered when you press <b>Save</b>. If a combination is already taken by another app you will see an error and the old ones stay active.</p>
     </div>
   );
 }

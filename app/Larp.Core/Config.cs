@@ -54,8 +54,11 @@ public sealed record Node(
 /// The parts of the config the native side needs. Theme and per-slice appearance are
 /// the UI's business: the host never re-serialises the file, it stores the UI's JSON as-is.
 /// </summary>
-public sealed record Config(int Version, Trigger Trigger, Behavior Behavior, IReadOnlyList<Node> Menu)
+public sealed record Config(int Version, IReadOnlyList<Trigger> Triggers, Behavior Behavior, IReadOnlyList<Node> Menu)
 {
+    /// <summary>The first trigger (the config may list several; any of them opens the menu).</summary>
+    public Trigger Trigger => Triggers[0];
+
     public Node? FindNode(string id) => Find(Menu, id);
 
     private static Node? Find(IReadOnlyList<Node> nodes, string id)
