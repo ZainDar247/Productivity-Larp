@@ -29,6 +29,8 @@ export interface Bridge {
   overlayReady(): Promise<void>;
   warpCursor(x: number, y: number): Promise<void>;
   loadImage(path: string): Promise<string>;
+  /** Copy a local image into the config folder; resolves to the config-relative path ("images/x.png"). */
+  importImage(path: string): Promise<string>;
   openSettings(): Promise<void>;
   openConfigDir(): Promise<void>;
   /** Is the app registered to start when the user signs in to Windows? */
@@ -71,6 +73,7 @@ const native: Bridge = {
   overlayReady: () => api("POST", "/api/overlay/ready"),
   warpCursor: (x, y) => api("POST", "/api/cursor", { x, y }),
   loadImage: async (path) => (await api<{ dataUrl: string }>("GET", `/api/image?path=${encodeURIComponent(path)}`)).dataUrl,
+  importImage: async (path) => (await api<{ path: string }>("POST", "/api/image/import", { path })).path,
   openSettings: () => api("POST", "/api/settings/open"),
   openConfigDir: () => api("POST", "/api/config-dir/open"),
   getAutostart: async () => (await api<{ enabled: boolean }>("GET", "/api/startup")).enabled,
@@ -111,6 +114,7 @@ const mock: Bridge = {
   async overlayReady() { mockLog.push("ready"); },
   async warpCursor(x, y) { mockLog.push(`warp:${Math.round(x)},${Math.round(y)}`); },
   async loadImage(path) { return path; },
+  async importImage(path) { return path; },
   async openSettings() { mockLog.push("settings"); },
   async openConfigDir() { mockLog.push("open-config-dir"); },
   async getAutostart() { try { return localStorage.getItem("larp.mock.autostart") === "1"; } catch { return false; } },

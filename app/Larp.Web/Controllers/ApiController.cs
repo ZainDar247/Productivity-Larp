@@ -7,6 +7,7 @@ public sealed record ConfigPayload(string Raw, string? Error, string ConfigDir, 
 public sealed record SaveRequest(string Json);
 public sealed record WarpRequest(double X, double Y);
 public sealed record AutostartRequest(bool Enabled);
+public sealed record ImportRequest(string Path);
 public sealed record PickRequest(string? Title, string[]? Extensions);
 
 /// <summary>The JSON API the React UI talks to. Every call is token-protected by <see cref="LocalOnlyMiddleware"/>.</summary>
@@ -105,8 +106,17 @@ public sealed class ApiController(ConfigStore store, IDesktop desktop, EventBus 
     [HttpGet("image")]
     public IActionResult Image([FromQuery] string path)
     {
-        try { return Ok(new { dataUrl = ImageLoader.ToDataUrl(path) }); }
+        try { return Ok(new { dataUrl = ImageLoader.ToDataUrl(ImageLoader.Resolve(path, store.Dir)) }); }
         catch (LarpException e) { return Problem400(e); }
+    }
+
+    /// <summary>Copy a picked image into the config folder so the config no longer depends on the original file.</summary>
+    [HttpPost("image/import")]
+    public IActionResult ImportImage([FromBody] ImportRequest r)
+    {
+        try { return Ok(new { path = ImageLoader.Import(r.Path, store.Dir) }); }
+        catch (LarpException e) { return Problem400(e); }
+        catch (IOException e) { return Problem400(new LarpException($"could not copy the image: {e.Message}")); }
     }
 
     private BadRequestObjectResult Problem400(LarpException e) => BadRequest(new { error = e.Message });

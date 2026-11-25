@@ -54,6 +54,9 @@ internal sealed class TrayContext : ApplicationContext
         // a second launch just asks the running instance to show its settings
         _showWait = ThreadPool.RegisterWaitForSingleObject(showSignal, (_, _) => _ui.BeginInvoke(_settings.Open), null, Timeout.Infinite, false);
 
+        // launched by hand: show Settings right away, don't make the user wait for the menu window to warm up
+        if (!_background) _settings.Open();
+
         _ = StartAsync(Url("overlay"));
     }
 
@@ -73,7 +76,6 @@ internal sealed class TrayContext : ApplicationContext
         try
         {
             _triggers.Apply(_store.Current);
-            if (!_background && (_store.FirstRun || _store.LoadError is not null)) _settings.Open();
         }
         catch (LarpException e)
         {
@@ -99,9 +101,25 @@ internal sealed class TrayContext : ApplicationContext
         };
         menu.Opening += (_, _) => startup.Checked = Autostart.IsEnabled(); // may have been changed from Settings
         menu.Items.Add(startup);
+        menu.Items.Add("Hard refresh (restart)", null, (_, _) => HardRefresh());
         menu.Items.Add(new ToolStripSeparator());
         menu.Items.Add("Quit", null, (_, _) => ExitThread());
         return menu;
+    }
+
+    /// <summary>Quit and start a fresh copy (silently, in the tray): reloads the config, the menu and Settings windows from scratch.</summary>
+    private void HardRefresh()
+    {
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(Environment.ProcessPath!, $"{Autostart.BackgroundFlag} {Program.RestartFlag}") { UseShellExecute = false });
+        }
+        catch (Exception e)
+        {
+            _tray.ShowBalloonTip(5000, "productivity.larp", $"Couldn't restart: {e.Message}", ToolTipIcon.Warning);
+            return;
+        }
+        ExitThread();
     }
 
     protected override void ExitThreadCore()

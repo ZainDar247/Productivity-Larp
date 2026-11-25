@@ -15,7 +15,7 @@ internal sealed class SettingsController(Func<string> pageUrl, Icon icon)
         {
             if (_form.WindowState == FormWindowState.Minimized) _form.WindowState = FormWindowState.Normal;
             _form.Show();
-            _form.Activate();
+            Raise(_form);
             return;
         }
 
@@ -33,9 +33,17 @@ internal sealed class SettingsController(Func<string> pageUrl, Icon icon)
         form.FormClosed += (_, _) => { web.Dispose(); _form = null; };
         _form = form;
         form.Show();
-        form.Activate();
+        Raise(form);
 
         _ = Init(web, form);
+    }
+
+    /// <summary>Windows often refuses to steal focus for a background process; flipping TopMost reliably puts the window in front.</summary>
+    private static void Raise(Form f)
+    {
+        f.TopMost = true;
+        f.TopMost = false;
+        f.Activate();
     }
 
     private async Task Init(WebView2 web, Form form)

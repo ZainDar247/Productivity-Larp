@@ -1,4 +1,4 @@
-import { useMemo, useState, type ReactNode } from "react";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { icons } from "lucide-react";
 import { bridge } from "../lib/bridge";
 import { iconByName, isEmoji } from "../ui/Glyph";
@@ -71,13 +71,38 @@ export function IconPicker({ value, onChange }: { value?: string; onChange: (v: 
   );
 }
 
+/** A file on disk outside the config folder's images/ (not a URL, data: URL or already-imported relative path). */
+const isExternalFile = (v?: string): v is string => !!v && !/^(https?:|data:|images[\\/])/i.test(v.trim()) && /^([a-z]:[\\/]|\\\\|\/)/i.test(v.trim());
+
 export function ImageInput({ value, onChange }: { value?: string; onChange: (v: string | undefined) => void }) {
   const url = useImage(value);
+  const [draft, setDraft] = useState<string | null>(null); // text being typed, not yet imported
+  const [err, setErr] = useState<string | null>(null);
+
+  // Copy a local image into the config folder and point the config at the copy.
+  const adopt = async (v: string | undefined) => {
+    setDraft(null);
+    if (!isExternalFile(v)) { setErr(null); onChange(v || undefined); return; }
+    try { onChange(await bridge.importImage(v.trim())); setErr(null); }
+    catch (e) { setErr((e as Error).message); onChange(v); }
+  };
+
+  // images chosen before this existed still point at the original file: copy them in the first time they're shown
+  const adoptRef = useRef(adopt); adoptRef.current = adopt;
+  useEffect(() => { if (bridge.native && isExternalFile(value)) void adoptRef.current(value); }, [value]);
+
   return (
     <span className="row">
       {value && <span className="img-preview">{url ? <img src={url} alt="" /> : "?"}</span>}
-      <PathInput value={value ?? ""} onChange={(v) => onChange(v || undefined)} extensions={["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp"]}
-        placeholder="path to an image, or a URL" title="Choose an image" />
+      <input value={draft ?? value ?? ""} placeholder="pick an image (it is copied into the config folder), or a URL" spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { if (draft !== null) void adopt(draft); }}
+        onKeyDown={(e) => { if (e.key === "Enter" && draft !== null) void adopt(draft); }} />
+      <button type="button" className="btn" onClick={async () => {
+        const p = await bridge.pickFile({ extensions: ["png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "bmp"], title: "Choose an image" });
+        if (p) await adopt(p);
+      }}>Browse…</button>
+      {err && <span className="field-hint warn">{err}</span>}
     </span>
   );
 }

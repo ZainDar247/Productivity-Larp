@@ -30,29 +30,64 @@ public sealed class ConfigStore
     public string ConfigPath => Path.Combine(Dir, "config.json");
     public bool FirstRun { get; }
 
-    private ConfigStore(string dir, Config current, string? error, bool firstRun)
+    private ConfigStore(string dir, string backupDir, Config current, string? error, bool firstRun)
     {
-        Dir = dir; _current = current; _loadError = error; FirstRun = firstRun;
+        Dir = dir; BackupDir = backupDir; _current = current; _loadError = error; FirstRun = firstRun;
     }
+
+    /// <summary>Where timestamped copies of config.json are kept (outside the config folder by default, so removing the app or its data never takes them along).</summary>
+    public string BackupDir { get; }
 
     public Config Current { get { lock (_gate) return _current; } }
     public string? LoadError { get { lock (_gate) return _loadError; } }
 
-    public static ConfigStore Open(string dir)
+    public static ConfigStore Open(string dir, string? backupDir = null)
     {
         Directory.CreateDirectory(dir);
+        backupDir ??= Path.Combine(dir, "backups");
         var path = Path.Combine(dir, "config.json");
+
+        // config.json vanished (folder wiped, app reinstalled...): bring back the newest backup instead of starting over
+        if (!File.Exists(path) && LatestBackup(backupDir) is { } latest)
+        {
+            try { File.Copy(latest, path); } catch (IOException) { /* fall through to the starter menu */ }
+        }
+
         var firstRun = !File.Exists(path);
         if (firstRun) File.WriteAllText(path, DefaultConfig.Json);
 
         try
         {
-            return new ConfigStore(dir, ConfigParser.Parse(File.ReadAllText(path)), null, firstRun);
+            var text = File.ReadAllText(path);
+            var config = ConfigParser.Parse(text);
+            if (!firstRun) Backup(backupDir, text);
+            return new ConfigStore(dir, backupDir, config, null, firstRun);
         }
         catch (Exception e) when (e is LarpException or IOException or UnauthorizedAccessException)
         {
-            return new ConfigStore(dir, ConfigParser.Parse(DefaultConfig.Json), e.Message, firstRun);
+            return new ConfigStore(dir, backupDir, ConfigParser.Parse(DefaultConfig.Json), e.Message, firstRun);
         }
+    }
+
+    private const int KeepBackups = 30;
+
+    private static string? LatestBackup(string backupDir) =>
+        Directory.Exists(backupDir)
+            ? Directory.EnumerateFiles(backupDir, "config-*.json").OrderByDescending(Path.GetFileName).FirstOrDefault()
+            : null;
+
+    /// <summary>Keep a timestamped copy of a valid config (skipped if identical to the newest copy). Never throws.</summary>
+    private static void Backup(string backupDir, string json)
+    {
+        try
+        {
+            Directory.CreateDirectory(backupDir);
+            if (LatestBackup(backupDir) is { } last && File.ReadAllText(last) == json) return;
+            File.WriteAllText(Path.Combine(backupDir, $"config-{DateTime.Now:yyyyMMdd-HHmmss-fff}.json"), json);
+            foreach (var old in Directory.EnumerateFiles(backupDir, "config-*.json").OrderByDescending(Path.GetFileName).Skip(KeepBackups))
+                File.Delete(old);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* a backup is a bonus, never a failure */ }
     }
 
     /// <summary>The file exactly as stored, so the settings UI can repair a broken one.</summary>
@@ -69,6 +104,7 @@ public sealed class ConfigStore
         var tmp = ConfigPath + ".tmp";
         File.WriteAllText(tmp, json);
         File.Move(tmp, ConfigPath, overwrite: true); // atomic replace: never leaves a half-written config
+        Backup(BackupDir, json);
         lock (_gate) { _current = parsed; _loadError = null; }
         return parsed;
     }

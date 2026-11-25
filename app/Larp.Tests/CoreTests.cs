@@ -290,6 +290,22 @@ public class ConfigStoreTests
         Assert.False(File.Exists(s.ConfigPath + ".tmp"));
     }
 
+    [Fact] public void A_deleted_config_is_restored_from_the_newest_backup_not_reset()
+    {
+        using var d = new TempDir();
+        var cfg = Path.Combine(d.Path, "cfg");
+        var backups = Path.Combine(d.Path, "backups");
+        var s = ConfigStore.Open(cfg, backups);
+        const string json = """{ "trigger": {"type":"keyboard","shortcut":"F9"}, "menu": [{"id":"mine"}] }""";
+        s.Save(json);
+        Directory.Delete(cfg, recursive: true); // the whole config folder is wiped
+
+        var again = ConfigStore.Open(cfg, backups);
+        Assert.False(again.FirstRun);
+        Assert.NotNull(again.Current.FindNode("mine"));
+        Assert.Equal(json, File.ReadAllText(again.ConfigPath));
+    }
+
     [Fact] public void Invalid_save_writes_nothing()
     {
         using var d = new TempDir();
@@ -320,6 +336,23 @@ public class ConfigStoreTests
 
 public class ImageTests
 {
+    [Fact] public void Import_copies_into_config_images_once_and_resolves_relative()
+    {
+        using var d = new TempDir();
+        var cfg = Path.Combine(d.Path, "cfg");
+        var src = Path.Combine(d.Path, "a.png");
+        File.WriteAllBytes(src, new byte[] { 1, 2, 3 });
+        var rel = ImageLoader.Import(src, cfg);
+        Assert.Equal("images/a.png", rel);
+        Assert.Equal(rel, ImageLoader.Import(src, cfg));                       // same file: no duplicate
+        Assert.Equal(rel, ImageLoader.Import(Path.Combine(cfg, rel), cfg));    // already imported
+        File.Delete(src);                                                       // original gone: the copy still works
+        Assert.Equal("data:image/png;base64,AQID", ImageLoader.ToDataUrl(ImageLoader.Resolve(rel, cfg)));
+        var other = Path.Combine(d.Path, "sub"); Directory.CreateDirectory(other);
+        File.WriteAllBytes(Path.Combine(other, "a.png"), new byte[] { 9 });
+        Assert.Equal("images/a-2.png", ImageLoader.Import(Path.Combine(other, "a.png"), cfg)); // same name, different content
+    }
+
     [Fact] public void Rejects_unknown_extension() => Assert.Throws<LarpException>(() => ImageLoader.ToDataUrl("x.exe"));
     [Fact] public void Rejects_missing_file() => Assert.Throws<LarpException>(() => ImageLoader.ToDataUrl("/nope/missing.png"));
 
